@@ -12,8 +12,10 @@
 		channelId as _channelId,
 		showSidebar,
 		socket,
-		user
+		user,
+		WEBUI_NAME
 	} from '$lib/stores';
+	import { APP_NAME } from '$lib/constants';
 	import { getChannelById, getChannelMessages, sendMessage } from '$lib/apis/channels';
 
 	import Messages from './Messages.svelte';
@@ -288,10 +290,10 @@
 					} else {
 						return e.name;
 					}
-				}, '')} • Open WebUI</title
+				}, '')} • {APP_NAME}</title
 		>
 	{:else}
-		<title>#{channel?.name ?? 'Channel'} • Open WebUI</title>
+		<title>#{channel?.name ?? 'Channel'} • {APP_NAME}</title>
 	{/if}
 </svelte:head>
 

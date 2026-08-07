@@ -8,7 +8,13 @@
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { settings } from '$lib/stores';
 	import { getKnowledgeById } from '$lib/apis/knowledge';
-	import { getFileById, getFileContentById } from '$lib/apis/files';
+	import {
+		createFileTranslationJob,
+		getFileById,
+		getFileContentById,
+		getFileTranslationJobById
+	} from '$lib/apis/files';
+	import { toast } from 'svelte-sonner';
 
 	import CodeBlock from '$lib/components/chat/Messages/CodeBlock.svelte';
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
@@ -34,6 +40,10 @@
 
 	let enableFullContent = false;
 	let loading = false;
+	let translating = false;
+	let translationTargetLanguage = 'English';
+	let translationModel = 'translategemma';
+	let forceTranslationOcr = false;
 
 	let isPDF = false;
 	let isAudio = false;
@@ -58,6 +68,9 @@
 	let pptxSlides: string[] = [];
 	let pptxCurrentSlide = 0;
 	let pptxError = '';
+
+	$: translationReview = item?.file?.data?.translation_review ?? [];
+	$: hasTranslationReview = Array.isArray(translationReview) && translationReview.length > 0;
 
 	let panzoomRef: PanzoomContainer;
 	const resetImageView = () => {
@@ -244,6 +257,67 @@
 		await tick();
 	};
 
+	const translateFile = async () => {
+		if (!item?.id || translating || !translationTargetLanguage.trim()) return;
+
+		translating = true;
+		try {
+			const jobResult = await createFileTranslationJob(
+				localStorage.token,
+				item.id,
+				translationTargetLanguage.trim(),
+				translationModel.trim() || null,
+				null,
+				forceTranslationOcr
+			);
+
+			const jobId = jobResult?.job?.id;
+			if (!jobId) {
+				throw new Error($i18n.t('Translation job was not created.'));
+			}
+
+			let result = null;
+			while (true) {
+				const statusResult = await getFileTranslationJobById(localStorage.token, jobId);
+				const job = statusResult?.job;
+				if (!job) {
+					throw new Error($i18n.t('Translation job could not be loaded.'));
+				}
+				if (job.status === 'completed') {
+					result = job.result;
+					break;
+				}
+				if (job.status === 'failed') {
+					throw new Error(job.error ?? $i18n.t('Document translation failed.'));
+				}
+				await new Promise((resolve) => setTimeout(resolve, 1500));
+			}
+
+			if (result?.file) {
+				item = {
+					...item,
+					id: result.file.id,
+					name: result.file.filename,
+					file: result.file,
+					meta: result.file.meta,
+					size: result.file.meta?.size,
+					type: 'file'
+				};
+				selectedTab = result.review?.length ? 'review' : 'preview';
+				docxHtml = '';
+				docxError = '';
+				if (result.file.filename?.toLowerCase().endsWith('.docx')) {
+					await loadDocxContent();
+				}
+				toast.success($i18n.t('Translated file generated'));
+			}
+		} catch (error) {
+			toast.error(`${error}`);
+		} finally {
+			translating = false;
+		}
+	};
+
 	$: if (show) {
 		loadContent();
 	}
@@ -375,6 +449,37 @@
 					{/if}
 				</div>
 			</div>
+
+			{#if item?.type === 'file' && (isPDF || isDocx)}
+				<div
+					class="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 text-xs border-t border-gray-50 dark:border-gray-850/30 pt-2"
+				>
+					<input
+						class="px-2.5 py-1.5 rounded-lg bg-transparent border border-gray-100 dark:border-gray-800 outline-none flex-1"
+						bind:value={translationTargetLanguage}
+						placeholder={$i18n.t('Target language')}
+					/>
+					<input
+						class="px-2.5 py-1.5 rounded-lg bg-transparent border border-gray-100 dark:border-gray-800 outline-none flex-1"
+						bind:value={translationModel}
+						placeholder={$i18n.t('Model')}
+					/>
+					{#if isPDF}
+						<label class="flex items-center gap-1.5 text-gray-500">
+							<input type="checkbox" bind:checked={forceTranslationOcr} />
+							{$i18n.t('Force OCR')}
+						</label>
+					{/if}
+					<button
+						class="px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black disabled:opacity-50"
+						type="button"
+						disabled={translating || !translationTargetLanguage.trim()}
+						on:click={translateFile}
+					>
+						{translating ? $i18n.t('Translating...') : $i18n.t('Translate')}
+					</button>
+				</div>
+			{/if}
 		</div>
 
 		<div class="max-h-[75vh] overflow-auto">
@@ -391,7 +496,7 @@
 					</div>
 				{/if}
 
-				{#if isAudio || isPDF || isExcel || isCode || isMarkdown || isDocx || isPptx}
+				{#if isAudio || isPDF || isExcel || isCode || isMarkdown || isDocx || isPptx || hasTranslationReview}
 					<div
 						class="flex mb-2.5 scrollbar-none overflow-x-auto w-full border-b border-gray-50 dark:border-gray-850/30 text-center text-sm font-medium bg-transparent dark:text-gray-200"
 					>
@@ -414,6 +519,18 @@
 								selectedTab = 'preview';
 							}}>{$i18n.t('Preview')}</button
 						>
+
+						{#if hasTranslationReview}
+							<button
+								class="min-w-fit py-1.5 px-4 border-b {selectedTab === 'review'
+									? ' '
+									: ' border-transparent text-gray-300 dark:text-gray-600 hover:text-gray-700 dark:hover:text-white'} transition"
+								type="button"
+								on:click={() => {
+									selectedTab = 'review';
+								}}>{$i18n.t('Review')}</button
+							>
+						{/if}
 					</div>
 				{/if}
 
@@ -505,6 +622,58 @@
 							</div>
 						{/if}
 					{/if}
+				{:else if selectedTab === 'review' && hasTranslationReview}
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-3 h-[70vh] min-h-0">
+						<div
+							class="min-h-0 border border-gray-50 dark:border-gray-850 rounded-lg overflow-hidden"
+						>
+							{#if isPDF}
+								<PDFViewer
+									url={`${WEBUI_API_BASE_URL}/files/${item.id}/content`}
+									className="w-full h-full border-0"
+								/>
+							{:else if isDocx && docxHtml}
+								<div
+									class="office-preview h-full overflow-auto p-4 prose dark:prose-invert max-w-full text-sm"
+								>
+									{@html docxHtml}
+								</div>
+							{:else}
+								<div class="h-full overflow-auto p-4 text-sm whitespace-pre-wrap">
+									{(item?.file?.data?.content ?? '').trim() || 'No content'}
+								</div>
+							{/if}
+						</div>
+
+						<div
+							class="min-h-0 overflow-auto border border-gray-50 dark:border-gray-850 rounded-lg divide-y divide-gray-50 dark:divide-gray-850"
+						>
+							{#each translationReview as unit}
+								<div class="p-3">
+									{#if unit.page}
+										<div class="text-xs font-medium text-gray-500 mb-2">
+											{$i18n.t('Page')}
+											{unit.page}
+										</div>
+									{/if}
+									<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+										<div>
+											<div class="font-medium text-gray-500 mb-1">{$i18n.t('Source')}</div>
+											<div class="whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+												{unit.source}
+											</div>
+										</div>
+										<div>
+											<div class="font-medium text-gray-500 mb-1">{$i18n.t('Translation')}</div>
+											<div class="whitespace-pre-wrap text-gray-900 dark:text-gray-100">
+												{unit.translated}
+											</div>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
 				{:else if selectedTab === 'preview'}
 					{#if isAudio}
 						<audio

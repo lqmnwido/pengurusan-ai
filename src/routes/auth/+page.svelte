@@ -24,8 +24,6 @@
 
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import OnBoarding from '$lib/components/OnBoarding.svelte';
-	import SensitiveInput from '$lib/components/common/SensitiveInput.svelte';
-	import { redirect } from '@sveltejs/kit';
 
 	const i18n = getContext('i18n');
 
@@ -39,8 +37,12 @@
 	let email = '';
 	let password = '';
 	let confirmPassword = '';
+	let showPassword = false;
+	let showConfirmPassword = false;
 
 	let ldapUsername = '';
+	const AUTH_APP_LOGO_URL = 'https://dev.d-reams.com/img/logo-d.7378c4bf.png';
+	const AUTH_LOGIN_LOGO_URL = 'https://dev.d-reams.com/img/logo-light-inside.7841f3f2.png';
 
 	const setSessionUser = async (sessionUser, redirectPath: string | null = null) => {
 		if (sessionUser) {
@@ -144,25 +146,16 @@
 
 	async function setLogoImage() {
 		await tick();
-		const logo = document.getElementById('logo');
-
-		if (logo) {
-			const isDarkMode = document.documentElement.classList.contains('dark');
-
-			if (isDarkMode) {
-				const darkImage = new Image();
-				darkImage.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-
-				darkImage.onload = () => {
-					logo.src = `${WEBUI_BASE_URL}/static/favicon-dark.png`;
-					logo.style.filter = ''; // Ensure no inversion is applied if favicon-dark.png exists
-				};
-
-				darkImage.onerror = () => {
-					logo.style.filter = 'invert(1)'; // Invert image if favicon-dark.png is missing
-				};
-			}
-		}
+		document.querySelectorAll<HTMLImageElement>('[data-auth-brand]').forEach((logo) => {
+			logo.src = AUTH_LOGIN_LOGO_URL;
+			logo.style.filter = '';
+			logo.style.borderRadius = '0';
+		});
+		document.querySelectorAll<HTMLImageElement>('[data-auth-logo]').forEach((logo) => {
+			logo.src = AUTH_APP_LOGO_URL;
+			logo.style.filter = '';
+			logo.style.borderRadius = '0';
+		});
 	}
 
 	onMount(async () => {
@@ -219,6 +212,7 @@
 	<title>
 		{`${$WEBUI_NAME}`}
 	</title>
+	<link crossorigin="anonymous" rel="icon" href={AUTH_APP_LOGO_URL} />
 </svelte:head>
 
 <OnBoarding
@@ -229,21 +223,21 @@
 	}}
 />
 
-<div class="w-full h-screen max-h-[100dvh] text-white relative" id="auth-page">
-	<div class="w-full h-full absolute top-0 left-0 bg-white dark:bg-black"></div>
+<div class="w-full h-screen max-h-[100dvh] relative bg-[var(--auth-page-bg)]" id="auth-page">
+	<div class="w-full h-full absolute top-0 left-0 bg-[var(--auth-page-bg)]"></div>
 
 	<div class="w-full absolute top-0 left-0 right-0 h-8 drag-region" />
 
 	{#if loaded}
 		<div
-			class="fixed bg-transparent min-h-screen w-full flex justify-center font-primary z-50 text-black dark:text-white"
+			class="fixed bg-transparent min-h-screen w-full flex justify-center font-primary z-50 text-[var(--auth-page-text)]"
 			id="auth-container"
 		>
 			<div class="w-full px-10 min-h-screen flex flex-col text-center">
 				{#if ($config?.features.auth_trusted_header ?? false) || $config?.features.auth === false}
 					<div class=" my-auto pb-10 w-full sm:max-w-md">
 						<div
-							class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-medium dark:text-gray-200"
+							class="flex items-center justify-center gap-3 text-xl sm:text-2xl text-center font-medium text-[var(--auth-page-text)]"
 						>
 							<div>
 								{$i18n.t('Signing in to {{WEBUI_NAME}}', { WEBUI_NAME: $WEBUI_NAME })}
@@ -255,19 +249,20 @@
 						</div>
 					</div>
 				{:else}
-					<div class="my-auto flex flex-col justify-center items-center">
-						<div class=" sm:max-w-md my-auto pb-10 w-full dark:text-gray-100">
-							{#if $config?.metadata?.auth_logo_position === 'center'}
-								<div class="flex justify-center mb-6">
-									<img
-										id="logo"
-										crossorigin="anonymous"
-										src="{WEBUI_BASE_URL}/static/favicon.png"
-										class="size-24 rounded-full"
-										alt="{$WEBUI_NAME} logo"
-									/>
-								</div>
-							{/if}
+						<div class="my-auto flex flex-col justify-center items-center">
+							<div class="auth-panel sm:max-w-md my-auto w-full">
+								{#if $config?.metadata?.auth_logo_position === 'center'}
+									<div class="flex justify-center mb-6">
+										<img
+											id="logo"
+											data-auth-brand
+											crossorigin="anonymous"
+											src={AUTH_LOGIN_LOGO_URL}
+											class="h-10 w-auto object-contain"
+											alt="{$WEBUI_NAME} logo"
+										/>
+									</div>
+								{/if}
 							<form
 								class=" flex flex-col justify-center"
 								on:submit={(e) => {
@@ -276,20 +271,28 @@
 								}}
 							>
 								<div class="mb-1">
-									<div class=" text-2xl font-medium">
-										{#if $config?.onboarding ?? false}
-											{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-										{:else if mode === 'ldap'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
-										{:else if mode === 'signin'}
-											{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-										{:else}
-											{$i18n.t(`Sign up to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
-										{/if}
-									</div>
+									<div class="mb-5 flex flex-col items-center gap-3 text-center">
+										<img
+											data-auth-brand
+											crossorigin="anonymous"
+											src={AUTH_LOGIN_LOGO_URL}
+											class="h-10 w-auto object-contain"
+											alt="D-Reams logo"
+										/>
+										<div class="text-[1.625rem] leading-tight font-semibold">
+											{#if $config?.onboarding ?? false}
+												{$i18n.t(`Get started with {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{:else if mode === 'ldap'}
+												{$i18n.t(`Sign in to {{WEBUI_NAME}} with LDAP`, { WEBUI_NAME: $WEBUI_NAME })}
+											{:else if mode === 'signin'}
+												{$i18n.t(`Sign in to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{:else}
+												{$i18n.t(`Sign up to {{WEBUI_NAME}}`, { WEBUI_NAME: $WEBUI_NAME })}
+											{/if}
+										</div>
 
 									{#if $config?.onboarding ?? false}
-										<div class="mt-1 text-xs font-medium text-gray-600 dark:text-gray-500">
+										<div class="mt-1 text-xs font-medium text-[var(--auth-page-muted)]">
 											ⓘ {$WEBUI_NAME}
 											{$i18n.t(
 												'does not make any external connections, and your data stays securely on your locally hosted server.'
@@ -302,14 +305,14 @@
 									<div class="flex flex-col mt-4">
 										{#if mode === 'signup'}
 											<div class="mb-2">
-												<label for="name" class="text-sm font-medium text-left mb-1 block"
+												<label for="name" class="auth-label"
 													>{$i18n.t('Name')}</label
 												>
-												<input
+											<input
 													bind:value={name}
 													type="text"
 													id="name"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													class="auth-input my-0.5 w-full text-sm outline-hidden"
 													autocomplete="name"
 													placeholder={$i18n.t('Enter Your Full Name')}
 													required
@@ -319,13 +322,13 @@
 
 										{#if mode === 'ldap'}
 											<div class="mb-2">
-												<label for="username" class="text-sm font-medium text-left mb-1 block"
+												<label for="username" class="auth-label"
 													>{$i18n.t('Username')}</label
 												>
-												<input
+											<input
 													bind:value={ldapUsername}
 													type="text"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													class="auth-input my-0.5 w-full text-sm outline-hidden"
 													autocomplete="username"
 													name="username"
 													id="username"
@@ -335,14 +338,14 @@
 											</div>
 										{:else}
 											<div class="mb-2">
-												<label for="email" class="text-sm font-medium text-left mb-1 block"
+												<label for="email" class="auth-label"
 													>{$i18n.t('Email')}</label
 												>
-												<input
+											<input
 													bind:value={email}
 													type="email"
 													id="email"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
+													class="auth-input my-0.5 w-full text-sm outline-hidden"
 													autocomplete="email"
 													name="email"
 													placeholder={$i18n.t('Enter Your Email')}
@@ -352,40 +355,131 @@
 										{/if}
 
 										<div>
-											<label for="password" class="text-sm font-medium text-left mb-1 block"
+											<label for="password" class="auth-label"
 												>{$i18n.t('Password')}</label
 											>
-											<SensitiveInput
-												bind:value={password}
-												type="password"
-												id="password"
-												class="my-0.5 w-full text-sm outline-hidden bg-transparent placeholder:text-gray-300 dark:placeholder:text-gray-600"
-												placeholder={$i18n.t('Enter Your Password')}
-												autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
-												name="password"
-												screenReader={true}
-												required
-												aria-required="true"
-											/>
+											<div class="auth-password-input my-0.5 w-full">
+												<input
+													bind:value={password}
+													type={showPassword ? 'text' : 'password'}
+													id="password"
+													class="auth-password-native text-sm outline-hidden"
+													autocomplete={mode === 'signup' ? 'new-password' : 'current-password'}
+													name="password"
+													placeholder={$i18n.t('Enter Your Password')}
+													required
+													aria-required="true"
+												/>
+												<button
+													class="auth-password-toggle"
+													type="button"
+													aria-pressed={showPassword}
+													aria-label={$i18n.t('Make password visible in the user interface')}
+													on:click={(e) => {
+														e.preventDefault();
+														showPassword = !showPassword;
+													}}
+												>
+													{#if showPassword}
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															viewBox="0 0 16 16"
+															fill="currentColor"
+															aria-hidden="true"
+															class="size-4"
+														>
+															<path
+																fill-rule="evenodd"
+																d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l10.5 10.5a.75.75 0 1 0 1.06-1.06l-1.322-1.323a7.012 7.012 0 0 0 2.16-3.11.87.87 0 0 0 0-.567A7.003 7.003 0 0 0 4.82 3.76l-1.54-1.54Zm3.196 3.195 1.135 1.136A1.502 1.502 0 0 1 9.45 8.389l1.136 1.135a3 3 0 0 0-4.109-4.109Z"
+																clip-rule="evenodd"
+															/>
+															<path
+																d="m7.812 10.994 1.816 1.816A7.003 7.003 0 0 1 1.38 8.28a.87.87 0 0 1 0-.566 6.985 6.985 0 0 1 1.113-2.039l2.513 2.513a3 3 0 0 0 2.806 2.806Z"
+															/>
+														</svg>
+													{:else}
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															viewBox="0 0 16 16"
+															fill="currentColor"
+															class="size-4"
+															aria-hidden="true"
+														>
+															<path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+															<path
+																fill-rule="evenodd"
+																d="M1.38 8.28a.87.87 0 0 1 0-.566 7.003 7.003 0 0 1 13.238.006.87.87 0 0 1 0 .566A7.003 7.003 0 0 1 1.379 8.28ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+																clip-rule="evenodd"
+															/>
+														</svg>
+													{/if}
+												</button>
+											</div>
 										</div>
 
 										{#if mode === 'signup' && $config?.features?.enable_signup_password_confirmation}
 											<div class="mt-2">
 												<label
 													for="confirm-password"
-													class="text-sm font-medium text-left mb-1 block"
+													class="auth-label"
 													>{$i18n.t('Confirm Password')}</label
 												>
-												<SensitiveInput
-													bind:value={confirmPassword}
-													type="password"
-													id="confirm-password"
-													class="my-0.5 w-full text-sm outline-hidden bg-transparent"
-													placeholder={$i18n.t('Confirm Your Password')}
-													autocomplete="new-password"
-													name="confirm-password"
-													required
-												/>
+												<div class="auth-password-input my-0.5 w-full">
+													<input
+														bind:value={confirmPassword}
+														type={showConfirmPassword ? 'text' : 'password'}
+														id="confirm-password"
+														class="auth-password-native text-sm outline-hidden"
+														autocomplete="new-password"
+														name="confirm-password"
+														placeholder={$i18n.t('Confirm Your Password')}
+														required
+													/>
+													<button
+														class="auth-password-toggle"
+														type="button"
+														aria-pressed={showConfirmPassword}
+														aria-label={$i18n.t('Make password visible in the user interface')}
+														on:click={(e) => {
+															e.preventDefault();
+															showConfirmPassword = !showConfirmPassword;
+														}}
+													>
+														{#if showConfirmPassword}
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																viewBox="0 0 16 16"
+																fill="currentColor"
+																aria-hidden="true"
+																class="size-4"
+															>
+																<path
+																	fill-rule="evenodd"
+																	d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l10.5 10.5a.75.75 0 1 0 1.06-1.06l-1.322-1.323a7.012 7.012 0 0 0 2.16-3.11.87.87 0 0 0 0-.567A7.003 7.003 0 0 0 4.82 3.76l-1.54-1.54Zm3.196 3.195 1.135 1.136A1.502 1.502 0 0 1 9.45 8.389l1.136 1.135a3 3 0 0 0-4.109-4.109Z"
+																	clip-rule="evenodd"
+																/>
+																<path
+																	d="m7.812 10.994 1.816 1.816A7.003 7.003 0 0 1 1.38 8.28a.87.87 0 0 1 0-.566 6.985 6.985 0 0 1 1.113-2.039l2.513 2.513a3 3 0 0 0 2.806 2.806Z"
+																/>
+															</svg>
+														{:else}
+															<svg
+																xmlns="http://www.w3.org/2000/svg"
+																viewBox="0 0 16 16"
+																fill="currentColor"
+																class="size-4"
+																aria-hidden="true"
+															>
+																<path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+																<path
+																	fill-rule="evenodd"
+																	d="M1.38 8.28a.87.87 0 0 1 0-.566 7.003 7.003 0 0 1 13.238.006.87.87 0 0 1 0 .566A7.003 7.003 0 0 1 1.379 8.28ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+																	clip-rule="evenodd"
+																/>
+															</svg>
+														{/if}
+													</button>
+												</div>
 											</div>
 										{/if}
 									</div>
@@ -394,14 +488,14 @@
 									{#if $config?.features.enable_login_form || $config?.features.enable_ldap || form}
 										{#if mode === 'ldap'}
 											<button
-												class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+												class="auth-button transition w-full font-medium text-sm py-2.5"
 												type="submit"
 											>
 												{$i18n.t('Authenticate')}
 											</button>
 										{:else}
 											<button
-												class="bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+												class="auth-button transition w-full font-medium text-sm py-2.5"
 												type="submit"
 											>
 												{mode === 'signin'
@@ -452,7 +546,7 @@
 								<div class="flex flex-col space-y-2">
 									{#if $config?.oauth?.providers?.google}
 										<button
-											class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="auth-button flex justify-center items-center transition w-full font-medium text-sm py-2.5"
 											on:click={() => {
 												window.location.href = `${WEBUI_BASE_URL}/oauth/google/login`;
 											}}
@@ -482,7 +576,7 @@
 									{/if}
 									{#if $config?.oauth?.providers?.microsoft}
 										<button
-											class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="auth-button flex justify-center items-center transition w-full font-medium text-sm py-2.5"
 											on:click={() => {
 												window.location.href = `${WEBUI_BASE_URL}/oauth/microsoft/login`;
 											}}
@@ -513,7 +607,7 @@
 									{/if}
 									{#if $config?.oauth?.providers?.github}
 										<button
-											class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="auth-button flex justify-center items-center transition w-full font-medium text-sm py-2.5"
 											on:click={() => {
 												window.location.href = `${WEBUI_BASE_URL}/oauth/github/login`;
 											}}
@@ -534,7 +628,7 @@
 									{/if}
 									{#if $config?.oauth?.providers?.oidc}
 										<button
-											class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="auth-button flex justify-center items-center transition w-full font-medium text-sm py-2.5"
 											on:click={() => {
 												window.location.href = `${WEBUI_BASE_URL}/oauth/oidc/login`;
 											}}
@@ -564,7 +658,7 @@
 									{/if}
 									{#if $config?.oauth?.providers?.feishu}
 										<button
-											class="flex justify-center items-center bg-gray-700/5 hover:bg-gray-700/10 dark:bg-gray-100/5 dark:hover:bg-gray-100/10 dark:text-gray-300 dark:hover:text-white transition w-full rounded-full font-medium text-sm py-2.5"
+											class="auth-button flex justify-center items-center transition w-full font-medium text-sm py-2.5"
 											on:click={() => {
 												window.location.href = `${WEBUI_BASE_URL}/oauth/feishu/login`;
 											}}
@@ -613,9 +707,10 @@
 					<div class=" self-center">
 						<img
 							id="logo"
+							data-auth-logo
 							crossorigin="anonymous"
-							src="{WEBUI_BASE_URL}/static/favicon.png"
-							class=" w-6 rounded-full"
+							src={AUTH_APP_LOGO_URL}
+							class="w-6 object-contain"
 							alt=""
 						/>
 					</div>
@@ -624,3 +719,184 @@
 		{/if}
 	{/if}
 </div>
+
+<style>
+	:global(:root) {
+		--auth-page-bg: #f4f7fb;
+		--auth-page-surface: rgba(255, 255, 255, 0.88);
+		--auth-page-border: rgba(15, 23, 42, 0.1);
+		--auth-page-text: #0f172a;
+		--auth-page-muted: #64748b;
+		--auth-page-input: rgba(255, 255, 255, 0.95);
+		--auth-page-shadow: 0 24px 80px rgba(15, 23, 42, 0.14);
+	}
+
+	:global(html.dark),
+	:global(.dark) {
+		--auth-page-bg: #0b1220;
+		--auth-page-surface: rgba(15, 23, 42, 0.88);
+		--auth-page-border: rgba(148, 163, 184, 0.16);
+		--auth-page-text: #e2e8f0;
+		--auth-page-muted: #94a3b8;
+		--auth-page-input: rgba(15, 23, 42, 0.92);
+		--auth-page-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:global(html:not(.light):not(.dark)),
+		:global(body:not(.light):not(.dark)) {
+			--auth-page-bg: #0b1220;
+			--auth-page-surface: rgba(15, 23, 42, 0.88);
+			--auth-page-border: rgba(148, 163, 184, 0.16);
+			--auth-page-text: #e2e8f0;
+			--auth-page-muted: #94a3b8;
+			--auth-page-input: rgba(15, 23, 42, 0.92);
+			--auth-page-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+		}
+	}
+
+	#auth-page {
+		background: var(--auth-page-bg);
+	}
+
+	.auth-panel {
+		background: var(--auth-page-surface);
+		border: 1px solid var(--auth-page-border);
+		border-radius: 8px;
+		box-shadow: var(--auth-page-shadow);
+		padding: 2rem;
+		color: var(--auth-page-text);
+		backdrop-filter: blur(16px);
+	}
+
+	.auth-label {
+		display: block;
+		margin-bottom: 0.25rem;
+		text-align: left;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--auth-page-muted);
+	}
+
+	.auth-input {
+		min-height: 3rem;
+		border: 1px solid var(--auth-page-border);
+		border-radius: 10px;
+		background: var(--auth-page-input);
+		color: var(--auth-page-text);
+		padding: 0.75rem 0.875rem;
+		appearance: none;
+		-webkit-appearance: none;
+		transition:
+			border-color 120ms ease,
+			box-shadow 120ms ease,
+			background-color 120ms ease,
+			transform 120ms ease;
+	}
+
+	.auth-input:-webkit-autofill,
+	.auth-input:-webkit-autofill:hover,
+	.auth-input:-webkit-autofill:focus,
+	.auth-input:-webkit-autofill:active,
+	.auth-password-native:-webkit-autofill,
+	.auth-password-native:-webkit-autofill:hover,
+	.auth-password-native:-webkit-autofill:focus,
+	.auth-password-native:-webkit-autofill:active {
+		-webkit-box-shadow: 0 0 0 1000px var(--auth-page-input) inset;
+		-webkit-text-fill-color: var(--auth-page-text);
+		caret-color: var(--auth-page-text);
+		transition: background-color 9999s ease-in-out 0s;
+	}
+
+	.auth-input:focus-within,
+	.auth-input:focus {
+		border-color: var(--skote-primary);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--skote-primary) 22%, transparent);
+	}
+
+	.auth-input:hover {
+		border-color: color-mix(in srgb, var(--auth-page-border) 70%, var(--skote-primary));
+	}
+
+	.auth-password-input {
+		min-height: 3rem;
+		border: 1px solid var(--auth-page-border);
+		border-radius: 10px;
+		background: var(--auth-page-input);
+		color: var(--auth-page-text);
+		padding: 0.75rem 0.875rem;
+		display: flex;
+		align-items: center;
+		overflow: hidden;
+		gap: 0.5rem;
+		transition:
+			border-color 120ms ease,
+			box-shadow 120ms ease,
+			background-color 120ms ease,
+			transform 120ms ease;
+	}
+
+	.auth-password-input:hover {
+		border-color: color-mix(in srgb, var(--auth-page-border) 70%, var(--skote-primary));
+	}
+
+	.auth-password-input:focus-within {
+		border-color: var(--skote-primary);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--skote-primary) 22%, transparent);
+	}
+
+	.auth-password-input :global(input) {
+		min-width: 0;
+		flex: 1;
+		border: 0;
+		appearance: none;
+		-webkit-appearance: none;
+		background: transparent;
+		color: var(--auth-page-text);
+		padding: 0;
+		margin: 0;
+		box-shadow: none;
+		outline: none;
+		line-height: 1.5;
+	}
+
+	.auth-password-input :global(input::placeholder) {
+		color: color-mix(in srgb, var(--auth-page-muted) 72%, transparent);
+	}
+
+	.auth-password-toggle {
+		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--auth-page-muted);
+		background: transparent;
+		padding: 0;
+		border: 0;
+		line-height: 1;
+	}
+
+	.auth-password-toggle:hover {
+		color: var(--auth-page-text);
+	}
+
+	.auth-input::placeholder {
+		color: color-mix(in srgb, var(--auth-page-muted) 72%, transparent);
+	}
+
+	.auth-button {
+		border-radius: 6px;
+		background: var(--skote-primary);
+		color: #ffffff;
+	}
+
+	.auth-button:hover {
+		background: var(--skote-primary-hover);
+	}
+
+	@media (max-width: 640px) {
+		.auth-panel {
+			padding: 1.5rem;
+		}
+	}
+</style>

@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { getContext } from 'svelte';
-	import { saveAs } from 'file-saver';
 	import { toast } from 'svelte-sonner';
+	import { getPrompts } from '$lib/apis/prompts';
 	import Plus from '$lib/components/icons/Plus.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	const i18n = getContext('i18n');
@@ -9,6 +10,9 @@
 	export let promptSuggestions = [];
 
 	let _promptSuggestions = [];
+	let savedPrompts = [];
+	let selectedSavedPromptId = '';
+	let loadingSavedPrompts = false;
 
 	const setPromptSuggestions = () => {
 		_promptSuggestions = promptSuggestions.map((s) => {
@@ -24,6 +28,31 @@
 	$: if (promptSuggestions) {
 		setPromptSuggestions();
 	}
+
+	const addSavedPrompt = () => {
+		const prompt = savedPrompts.find((p) => p.id === selectedSavedPromptId);
+		if (!prompt) {
+			return;
+		}
+
+		promptSuggestions = [
+			...promptSuggestions,
+			{
+				title: [prompt.name || prompt.command || '', prompt.command ? `/${prompt.command}` : ''],
+				content: prompt.content || ''
+			}
+		];
+		selectedSavedPromptId = '';
+	};
+
+	onMount(async () => {
+		loadingSavedPrompts = true;
+		savedPrompts = (await getPrompts(localStorage.token).catch((error) => {
+			toast.error(`${error}`);
+			return [];
+		})) ?? [];
+		loadingSavedPrompts = false;
+	});
 </script>
 
 <div class=" space-y-3">
@@ -33,6 +62,39 @@
 		</div>
 
 		<div class="flex justify-end gap-2">
+			<div class="flex items-center gap-1.5">
+				<select
+					class="text-xs max-w-44 rounded-lg border border-gray-100/30 dark:border-gray-850/30 bg-transparent px-2 py-1 outline-hidden"
+					bind:value={selectedSavedPromptId}
+					disabled={loadingSavedPrompts || savedPrompts.length === 0}
+					aria-label={$i18n.t('Select Prompt AI')}
+				>
+					<option value="">
+						{loadingSavedPrompts
+							? $i18n.t('Loading prompts...')
+							: savedPrompts.length
+								? $i18n.t('Select Prompt AI')
+								: $i18n.t('No prompts found')}
+					</option>
+					{#each savedPrompts as prompt}
+						<option value={prompt.id}>
+							{prompt.name || prompt.command}
+						</option>
+					{/each}
+				</select>
+
+				<button
+					class="flex text-xs items-center space-x-1 py-1 rounded-xl bg-transparent dark:text-gray-200 transition disabled:opacity-40"
+					type="button"
+					disabled={!selectedSavedPromptId}
+					on:click={addSavedPrompt}
+				>
+					<div class=" self-center font-medium line-clamp-1">
+						{$i18n.t('Add')}
+					</div>
+				</button>
+			</div>
+
 			<input
 				id="prompt-suggestions-import-input"
 				type="file"

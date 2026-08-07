@@ -1,6 +1,6 @@
 {
-  "name": "Open WebUI",
-  "short_name": "WebUI",
+  "name": "Pengurusan AI",
+  "short_name": "Pengurusan AI",
   "icons": [
     {
       "src": "/static/web-app-manifest-192x192.png",

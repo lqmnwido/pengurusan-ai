@@ -279,6 +279,123 @@ export const updateFileDataContentById = async (token: string, id: string, conte
 	return res;
 };
 
+export const translateFileById = async (
+	token: string,
+	id: string,
+	targetLanguage: string,
+	model?: string | null,
+	sourceLanguage?: string | null,
+	forceOcr: boolean = false
+) => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/files/${encodeURIComponent(id)}/translate`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({
+			target_language: targetLanguage,
+			source_language: sourceLanguage,
+			model,
+			force_ocr: forceOcr
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			error = err.detail || err.message;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const createFileTranslationJob = async (
+	token: string,
+	id: string,
+	targetLanguage: string,
+	model?: string | null,
+	sourceLanguage?: string | null,
+	forceOcr: boolean = false,
+	generateOutputFile: boolean = true
+) => {
+	let error = null;
+
+	const res = await fetch(
+		`${WEBUI_API_BASE_URL}/files/translation-jobs/${encodeURIComponent(id)}`,
+		{
+			method: 'POST',
+			headers: {
+				Accept: 'application/json',
+				'Content-Type': 'application/json',
+				authorization: `Bearer ${token}`
+			},
+			body: JSON.stringify({
+				target_language: targetLanguage,
+				source_language: sourceLanguage,
+				model,
+				force_ocr: forceOcr,
+				generate_output_file: generateOutputFile
+			})
+		}
+	)
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			error = err.detail || err.message;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
+export const getFileTranslationJobById = async (token: string, jobId: string) => {
+	let error = null;
+
+	const res = await fetch(
+		`${WEBUI_API_BASE_URL}/files/translation-jobs/${encodeURIComponent(jobId)}`,
+		{
+			method: 'GET',
+			headers: {
+				Accept: 'application/json',
+				authorization: `Bearer ${token}`
+			}
+		}
+	)
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			error = err.detail || err.message;
+			console.error(err);
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getFileContentById = async (id: string) => {
 	let error = null;
 

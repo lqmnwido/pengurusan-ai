@@ -46,12 +46,7 @@ const config = {
 		// 	toggleButtonPos: 'bottom-right' // Position of the toggle button
 		// }
 	},
-	onwarn: (warning, handler) => {
-		const { code } = warning;
-		if (code === 'css-unused-selector') return;
-
-		handler(warning);
-	}
+	onwarn: () => {}
 };
 
 export default config;

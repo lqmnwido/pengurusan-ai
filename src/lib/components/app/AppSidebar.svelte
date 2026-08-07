@@ -1,26 +1,27 @@
 <script lang="ts">
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import Plus from '$lib/components/icons/Plus.svelte';
-	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	let selected = '';
+	const SIDEBAR_LOGO_URL = 'https://dev.d-reams.com/img/logo-d.7378c4bf.png';
 </script>
 
 <nav
 	aria-label="App navigation"
-	class="min-w-[4.5rem] bg-gray-50 dark:bg-gray-950 flex gap-2.5 flex-col pt-8"
+	class="min-w-[4.5rem] bg-gray-850 dark:bg-gray-950 flex gap-2.5 flex-col pt-8 text-gray-400 border-r border-gray-900/10"
 >
 	<div class="flex justify-center relative">
 		{#if selected === 'home'}
 			<div class="absolute top-0 left-0 flex h-full">
-				<div class="my-auto rounded-r-lg w-1 h-8 bg-black dark:bg-white"></div>
+				<div class="my-auto rounded-r-lg w-1 h-8 bg-blue-500"></div>
 			</div>
 		{/if}
 
 		<Tooltip content="Home" placement="right">
 			<button
 				aria-label="Home"
-				class=" cursor-pointer {selected === 'home' ? 'rounded-2xl' : 'rounded-full'}"
+				class="cursor-pointer p-1 transition hover:bg-gray-800 {selected === 'home'
+					? 'rounded-lg bg-gray-800'
+					: 'rounded-lg'}"
 				on:click={() => {
 					selected = 'home';
 
@@ -30,8 +31,8 @@
 				}}
 			>
 				<img
-					src="{WEBUI_BASE_URL}/static/splash.png"
-					class="size-11 dark:invert p-0.5"
+					src={SIDEBAR_LOGO_URL}
+					class="size-10 p-0.5"
 					alt="logo"
 					draggable="false"
 				/>
@@ -39,24 +40,27 @@
 		</Tooltip>
 	</div>
 
-	<div class=" -mt-1 border-[1.5px] border-gray-100 dark:border-gray-900 mx-4"></div>
+	<div class="-mt-1 border-t border-gray-700/70 mx-4"></div>
 
 	<div class="flex justify-center relative group">
 		{#if selected === ''}
 			<div class="absolute top-0 left-0 flex h-full">
-				<div class="my-auto rounded-r-lg w-1 h-8 bg-black dark:bg-white"></div>
+				<div class="my-auto rounded-r-lg w-1 h-8 bg-blue-500"></div>
 			</div>
 		{/if}
 		<button
 			aria-label="Chat"
-			class=" cursor-pointer bg-transparent"
+			class="cursor-pointer bg-transparent p-1 rounded-lg transition hover:bg-gray-800 {selected ===
+			''
+				? 'bg-gray-800'
+				: ''}"
 			on:click={() => {
 				selected = '';
 			}}
 		>
 			<img
-				src="{WEBUI_BASE_URL}/static/favicon.png"
-				class="size-10 {selected === '' ? 'rounded-2xl' : 'rounded-full'}"
+				src={SIDEBAR_LOGO_URL}
+				class="size-9 rounded-lg"
 				alt="logo"
 				draggable="false"
 			/>

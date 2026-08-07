@@ -1,9 +1,17 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vite';
+import { createLogger, defineConfig } from 'vite';
 
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 
+const logger = createLogger('error');
+
 export default defineConfig({
+	logLevel: 'error',
+	customLogger: {
+		...logger,
+		warn: () => {},
+		warnOnce: () => {}
+	},
 	plugins: [
 		sveltekit(),
 		viteStaticCopy({
@@ -21,7 +29,10 @@ export default defineConfig({
 		APP_BUILD_HASH: JSON.stringify(process.env.APP_BUILD_HASH || 'dev-build')
 	},
 	build: {
-		sourcemap: true
+		sourcemap: true,
+		rollupOptions: {
+			onwarn: () => {}
+		}
 	},
 	worker: {
 		format: 'es'

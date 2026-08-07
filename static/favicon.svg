@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="48" x2="456" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7f8df2" />
+      <stop offset="1" stop-color="#556ee6" />
+    </linearGradient>
+    <linearGradient id="shine" x1="112" y1="120" x2="400" y2="384" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18" />
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#bg)"/>
+  <path d="M94 176c0-21 17-38 38-38h248c21 0 38 17 38 38v160c0 21-17 38-38 38H132c-21 0-38-17-38-38V176Z" fill="url(#shine)"/>
+  <path d="M132 334c12-41 34-67 68-79 20-8 46-12 56-12h0c10 0 36 4 56 12 34 12 56 38 68 79l10 34c2 6-2 12-9 12H131c-7 0-11-6-9-12l10-34Z" fill="#ffffff"/>
+  <path d="M168 287c16-20 35-30 58-30h60c23 0 42 10 58 30l18 24H150l18-24Z" fill="#d8defd"/>
+  <rect x="186" y="309" width="140" height="22" rx="11" fill="#29366f"/>
+  <circle cx="183" cy="379" r="31" fill="#1c2230"/>
+  <circle cx="329" cy="379" r="31" fill="#1c2230"/>
+  <circle cx="183" cy="379" r="14" fill="#ffffff"/>
+  <circle cx="329" cy="379" r="14" fill="#ffffff"/>
+  <text x="325" y="252" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="132" font-weight="800" fill="#ffffff">D</text>
+</svg>

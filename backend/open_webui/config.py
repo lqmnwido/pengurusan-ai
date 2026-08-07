@@ -236,6 +236,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR = DATA_DIR / 'cache'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+MEMORY_CACHE_TTL = int(os.getenv('MEMORY_CACHE_TTL', '300'))
+MEMORY_CACHE_MAX_ENTRIES = int(os.getenv('MEMORY_CACHE_MAX_ENTRIES', '1024'))
+
 
 ####################################
 # CUSTOM_NAME (Legacy)
@@ -268,7 +271,7 @@ if CUSTOM_NAME:
                         r.raw.decode_content = True
                         shutil.copyfileobj(r.raw, f)
 
-            WEBUI_NAME = data['name']
+            WEBUI_NAME = 'Pengurusan AI'
     except Exception as e:
         log.exception(e)
         pass
@@ -525,6 +528,12 @@ ENABLE_MEMORIES = ConfigVar(
     'ENABLE_MEMORIES',
     'memories.enable',
     os.getenv('ENABLE_MEMORIES', 'True').lower() == 'true',
+)
+
+ENABLE_AUTO_MEMORY_CAPTURE = ConfigVar(
+    'ENABLE_AUTO_MEMORY_CAPTURE',
+    'memories.auto_capture',
+    os.getenv('ENABLE_AUTO_MEMORY_CAPTURE', 'True').lower() == 'true',
 )
 
 CODE_INTERPRETER_ENGINE = ConfigVar(

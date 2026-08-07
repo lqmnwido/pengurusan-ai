@@ -94,7 +94,12 @@
 	} from '$lib/apis';
 	import { getTools } from '$lib/apis/tools';
 	import { getSkills } from '$lib/apis/skills';
-	import { uploadFile } from '$lib/apis/files';
+	import {
+		createFileTranslationJob,
+		getFileById,
+		getFileTranslationJobById,
+		uploadFile
+	} from '$lib/apis/files';
 	import { createOpenAITextStream } from '$lib/apis/streaming';
 	import { getFunctions } from '$lib/apis/functions';
 	import { updateFolderById } from '$lib/apis/folders';
@@ -1928,6 +1933,273 @@
 	// Chat functions
 	//////////////////////////
 
+	const getDocumentTranslationFiles = (items = []) => {
+		return items.filter((file) => {
+			const name = (
+				file?.name ??
+				file?.filename ??
+				file?.file?.filename ??
+				file?.meta?.name ??
+				''
+			).toLowerCase();
+			const contentType = (
+				file?.content_type ??
+				file?.file?.meta?.content_type ??
+				file?.meta?.content_type ??
+				''
+			).toLowerCase();
+
+			return (
+				file?.type === 'file' &&
+				(contentType === 'application/pdf' ||
+					contentType ===
+						'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+					name.endsWith('.pdf') ||
+					name.endsWith('.docx'))
+			);
+		});
+	};
+
+	const pushDocumentTranslationStatus = (message, description) => {
+		const status = {
+			action: 'document_translation',
+			description,
+			done: false,
+			timestamp: Date.now()
+		};
+
+		if (message.statusHistory) {
+			message.statusHistory = [...message.statusHistory, status];
+		} else {
+			message.statusHistory = [status];
+		}
+
+		history.messages[message.id] = message;
+		history = history;
+	};
+
+	const syncDocumentTranslationStatuses = (message, progress = []) => {
+		const statuses = progress.map((description) => ({
+			action: 'document_translation',
+			description,
+			done: false,
+			timestamp: Date.now()
+		}));
+
+		message.statusHistory = statuses;
+		history.messages[message.id] = message;
+		history = history;
+	};
+
+	const resolveDocumentFileId = (file) => {
+		const candidates = [
+			file?.id,
+			file?.file?.id,
+			file?.meta?.id,
+			file?.url,
+			file?.file?.url
+		].filter((value) => typeof value === 'string' && value.trim() !== '');
+
+		for (const candidate of candidates) {
+			if (/^[0-9a-f-]{36}$/i.test(candidate)) {
+				return candidate;
+			}
+
+			if (candidate.startsWith('http')) {
+				const parts = candidate.split('/').filter(Boolean);
+				const lastPart = parts.at(-1);
+				if (lastPart && /^[0-9a-f-]{36}$/i.test(lastPart)) {
+					return lastPart;
+				}
+			}
+		}
+
+		return null;
+	};
+
+	const parseDocumentTranslationRequest = (content = '') => {
+		const text = content.toLowerCase();
+		const asksTranslate =
+			/\btranslate\b/.test(text) || /\btranslated\b/.test(text) || text.includes('terjemah');
+
+		if (!asksTranslate) {
+			return null;
+		}
+
+		let targetLanguage = 'Malay';
+		if (text.includes('bahasa melayu') || text.includes('malay') || text.includes('melayu')) {
+			targetLanguage = 'Malay';
+		}
+
+		return {
+			targetLanguage,
+			forceOcr: text.includes('scanned') || text.includes('scan') || text.includes('ocr')
+		};
+	};
+
+	const createAssistantDocumentTranslation = async (userMessageId, inputContent, inputFiles) => {
+		const request = parseDocumentTranslationRequest(inputContent);
+		const documentFiles = getDocumentTranslationFiles(inputFiles);
+
+		if (!request || documentFiles.length === 0) {
+			return false;
+		}
+
+		const modelId = atSelectedModel?.id ?? selectedModels.find((modelId) => modelId) ?? null;
+		const responseMessageId = uuidv4();
+		let responseMessage = {
+			parentId: userMessageId,
+			id: responseMessageId,
+			childrenIds: [],
+			role: 'assistant',
+			content: $i18n.t('Translating document...'),
+			done: false,
+			model: modelId,
+			modelName: $models.find((model) => model.id === modelId)?.name ?? modelId,
+			modelIdx: 0,
+			timestamp: Math.floor(Date.now() / 1000)
+		};
+
+		history.messages[responseMessageId] = responseMessage;
+		history.messages[userMessageId].childrenIds = [
+			...history.messages[userMessageId].childrenIds,
+			responseMessageId
+		];
+		history.currentId = responseMessageId;
+		history = history;
+		await tick();
+		scrollToBottom();
+
+		try {
+			const translatedFiles = [];
+			for (const file of documentFiles) {
+				pushDocumentTranslationStatus(responseMessage, $i18n.t('Locating uploaded file'));
+
+				const fileId = resolveDocumentFileId(file);
+				if (!fileId) {
+					throw new Error($i18n.t('Unable to resolve the uploaded file ID for translation.'));
+				}
+
+				const sourceFile = await getFileById(localStorage.token, fileId);
+				if (!sourceFile?.id) {
+					throw new Error($i18n.t('Uploaded file could not be loaded from the server.'));
+				}
+
+				pushDocumentTranslationStatus(
+					responseMessage,
+					$i18n.t('Translating with {{model}}', {
+						model: modelId ?? 'document translation model'
+					})
+				);
+
+				const createdJob = await createFileTranslationJob(
+					localStorage.token,
+					sourceFile.id,
+					request.targetLanguage,
+					modelId,
+					null,
+					request.forceOcr,
+					false
+				);
+				const jobId = createdJob?.job?.id;
+				if (!jobId) {
+					throw new Error($i18n.t('Translation job was not created.'));
+				}
+
+				let translated = null;
+				while (true) {
+					const statusResult = await getFileTranslationJobById(localStorage.token, jobId);
+					const job = statusResult?.job;
+					if (!job) {
+						throw new Error($i18n.t('Translation job could not be loaded.'));
+					}
+
+					syncDocumentTranslationStatuses(responseMessage, job.progress ?? []);
+					await tick();
+
+					if (job.status === 'completed') {
+						translated = job.result;
+						break;
+					}
+
+					if (job.status === 'failed') {
+						throw new Error(job.error ?? $i18n.t('Document translation failed.'));
+					}
+
+					await new Promise((resolve) => setTimeout(resolve, 1500));
+				}
+
+				const translatedFile = translated?.file;
+				if (translatedFile?.id) {
+					pushDocumentTranslationStatus(
+						responseMessage,
+						translatedFile.meta?.content_type === 'application/pdf'
+							? $i18n.t('Generated translated PDF')
+							: $i18n.t('Generated translated DOCX')
+					);
+
+					translatedFiles.push({
+						type: 'file',
+						id: translatedFile.id,
+						url: `${translatedFile.id}`,
+						name: translatedFile.filename ?? translatedFile.meta?.name ?? file.name,
+						size: translatedFile.meta?.size,
+						content_type: translatedFile.meta?.content_type,
+						file: translatedFile
+					});
+				}
+
+				const translationText =
+					translated?.translation_text ??
+					translated?.review
+						?.map((item) => item.translated)
+						.filter(Boolean)
+						.join('\n\n') ??
+					'';
+				if (translationText) {
+					responseMessage.content = translationText;
+				}
+			}
+
+			responseMessage = {
+				...responseMessage,
+				content:
+					responseMessage.content ||
+					$i18n.t('Translated to {{language}}', {
+						language: request.targetLanguage
+					}),
+				...(translatedFiles.length > 0 ? { files: translatedFiles } : {}),
+				done: true
+			};
+		} catch (error) {
+			console.error(error);
+			const errorMessage = error?.detail ?? error?.message ?? `${error}`;
+			toast.error(errorMessage);
+			responseMessage = {
+				...responseMessage,
+				content: $i18n.t('Document translation failed.') + `\n\n${errorMessage}`,
+				error: {
+					content: errorMessage
+				},
+				done: true
+			};
+		}
+
+		history.messages[responseMessageId] = responseMessage;
+		history.currentId = responseMessageId;
+		history = history;
+		await tick();
+		scrollToBottom();
+
+		if (!$chatId) {
+			await initChatHandler(history);
+		} else {
+			await saveChatHandler($chatId, history);
+		}
+
+		return true;
+	};
+
 	const submitPrompt = async (inputContent, inputFiles) => {
 		const _files = structuredClone(inputFiles);
 
@@ -1973,6 +2245,10 @@
 		}
 
 		saveSessionSelectedModels();
+
+		if (await createAssistantDocumentTranslation(userMessageId, inputContent, _files)) {
+			return;
+		}
 
 		await sendMessage(history, userMessageId);
 	};

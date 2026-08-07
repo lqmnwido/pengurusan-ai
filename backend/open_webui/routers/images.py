@@ -1117,6 +1117,60 @@ async def image_edits(
                 images.append({'url': url})
 
             return images
+
+        elif request.app.state.config.IMAGE_EDIT_ENGINE == 'automatic1111':
+            if form_data.model:
+                await set_image_model(request, form_data.model)
+            elif model:
+                await set_image_model(request, model)
+
+            init_images = form_data.image if isinstance(form_data.image, list) else [form_data.image]
+            init_images = [image.split(',', 1)[1] if image.startswith('data:') else image for image in init_images]
+
+            data = {
+                'init_images': init_images,
+                'prompt': form_data.prompt,
+                'batch_size': form_data.n or 1,
+                # Conservative default for a 4 GB VRAM server: preserve the uploaded image
+                # enough to keep faces/composition recognizable while still allowing edits.
+                'denoising_strength': 0.55,
+                **({'width': width} if width is not None else {}),
+                **({'height': height} if height is not None else {}),
+            }
+
+            if request.app.state.config.IMAGE_STEPS is not None:
+                data['steps'] = request.app.state.config.IMAGE_STEPS
+
+            if form_data.negative_prompt is not None:
+                data['negative_prompt'] = form_data.negative_prompt
+
+            if request.app.state.config.AUTOMATIC1111_PARAMS:
+                data = {**data, **request.app.state.config.AUTOMATIC1111_PARAMS}
+
+            session = await get_session()
+            async with session.post(
+                url=f'{request.app.state.config.AUTOMATIC1111_BASE_URL}/sdapi/v1/img2img',
+                json=data,
+                headers={'authorization': get_automatic1111_api_auth(request)},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as r:
+                res = await r.json(content_type=None)
+
+            log.debug(f'res: {res}')
+
+            images = []
+            for image in res['images']:
+                image_data, content_type = await get_image_data(image)
+                _, url = await upload_image(
+                    request,
+                    image_data,
+                    content_type,
+                    {**data, 'info': res.get('info'), **metadata},
+                    user,
+                )
+                images.append({'url': url})
+
+            return images
     except Exception as e:
         error = e
         if isinstance(e, aiohttp.ClientResponseError):

@@ -68,9 +68,12 @@ einops==0.8.2
 ftfy==6.3.1
 chardet==5.2.0
 pypdf==6.7.5
+PyMuPDF==1.26.7
 fpdf2==2.8.7
+reportlab==4.4.6
 pymdown-extensions==10.21
 docx2txt==0.9
+python-docx==1.2.0
 python-pptx==1.0.2
 msoffcrypto-tool==6.0.0
 unstructured==0.18.31

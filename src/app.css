@@ -33,12 +33,59 @@
 /* --app-text-scale is updated via the UI Scale slider (Interface.svelte) */
 :root {
 	--app-text-scale: 1;
+	--skote-bg: #f8f8fb;
+	--skote-surface: #ffffff;
+	--skote-border: #e9edf5;
+	--skote-text: #495057;
+	--skote-muted: #74788d;
+	--skote-primary: #556ee6;
+	--skote-primary-hover: #485ec4;
+	--skote-sidebar: #2a3042;
+	--skote-sidebar-hover: #343b52;
+	--skote-sidebar-text: #a6b0cf;
+	--skote-shadow: 0 0.75rem 1.5rem rgba(18, 38, 63, 0.03);
+}
+
+.dark {
+	--skote-bg: #222736;
+	--skote-surface: #2a3042;
+	--skote-border: #343b52;
+	--skote-text: #eff2f7;
+	--skote-muted: #a6b0cf;
+	--skote-primary: #6b7df0;
+	--skote-primary-hover: #7d8df3;
+	--skote-sidebar: #1c2230;
+	--skote-sidebar-hover: #2a3042;
+	--skote-sidebar-text: #a6b0cf;
+	--skote-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.12);
 }
 
 html {
 	word-break: break-word;
 	/* font-size scales the entire document via the same UI control */
 	font-size: calc(1rem * var(--app-text-scale, 1));
+	background: var(--skote-bg);
+	color: var(--skote-text);
+}
+
+body {
+	background: var(--skote-bg);
+	color: var(--skote-text);
+}
+
+input,
+textarea,
+select {
+	accent-color: var(--skote-primary);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+	outline: 2px solid color-mix(in srgb, var(--skote-primary) 70%, transparent);
+	outline-offset: 2px;
 }
 
 #sidebar-chat-item {
@@ -94,6 +141,35 @@ textarea::placeholder {
 	direction: auto;
 }
 
+#sidebar {
+	background: var(--skote-sidebar);
+	color: var(--skote-sidebar-text);
+}
+
+#sidebar a,
+#sidebar button {
+	color: inherit;
+}
+
+#sidebar a:hover,
+#sidebar button:hover,
+#sidebar .selected,
+#sidebar [aria-current='page'] {
+	background-color: var(--skote-sidebar-hover) !important;
+	color: #ffffff !important;
+}
+
+#sidebar hr,
+#sidebar [class*='border-gray'] {
+	border-color: color-mix(in srgb, var(--skote-sidebar-text) 16%, transparent) !important;
+}
+
+#sidebar input {
+	background-color: color-mix(in srgb, #ffffff 7%, transparent);
+	border-color: color-mix(in srgb, var(--skote-sidebar-text) 14%, transparent);
+	color: #ffffff;
+}
+
 .input-prose {
 	@apply prose dark:prose-invert prose-headings:font-semibold prose-hr:my-4 prose-hr:border-gray-50 prose-hr:dark:border-gray-850 prose-p:my-1 prose-img:my-1 prose-headings:my-2 prose-pre:my-0 prose-table:my-1 prose-blockquote:my-0 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 whitespace-pre-line;
 }
@@ -141,15 +217,15 @@ li p {
 
 ::-webkit-scrollbar-thumb {
 	--tw-border-opacity: 1;
-	background-color: rgba(215, 215, 215, 0.6);
+	background-color: color-mix(in srgb, var(--skote-muted) 45%, transparent);
 	border-color: rgba(255, 255, 255, var(--tw-border-opacity));
-	border-radius: 9999px;
+	border-radius: 4px;
 	border-width: 1px;
 }
 
 /* Dark theme scrollbar styles */
 .dark ::-webkit-scrollbar-thumb {
-	background-color: rgba(67, 67, 67, 0.6); /* Darker color for dark theme */
+	background-color: color-mix(in srgb, var(--skote-muted) 35%, transparent);
 	border-color: rgba(0, 0, 0, var(--tw-border-opacity));
 }
 
@@ -160,7 +236,7 @@ li p {
 
 ::-webkit-scrollbar-track {
 	background-color: transparent;
-	border-radius: 9999px;
+	border-radius: 4px;
 }
 
 select {

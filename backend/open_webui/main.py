@@ -641,6 +641,13 @@ async def lifespan(app: FastAPI):
     app.state.instance_id = INSTANCE_ID
     start_logger()
 
+    try:
+        from open_webui.models.document_translation_jobs import DocumentTranslationJobs
+
+        await DocumentTranslationJobs.ensure_table_exists()
+    except Exception as e:
+        log.warning(f'Failed to ensure translation job table exists: {e}')
+
     if RESET_CONFIG_ON_START:
         await async_reset_config()
 

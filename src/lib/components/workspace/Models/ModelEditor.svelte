@@ -3,12 +3,13 @@
 
 	import { onMount, getContext, tick } from 'svelte';
 	import { models, tools, functions, user } from '$lib/stores';
-	import { WEBUI_BASE_URL, DEFAULT_CAPABILITIES } from '$lib/constants';
+	import { DEFAULT_CAPABILITIES } from '$lib/constants';
 
 	import { getTools } from '$lib/apis/tools';
 	import { getSkills } from '$lib/apis/skills';
 	import { getFunctions } from '$lib/apis/functions';
 	import { getModelsDefaults } from '$lib/apis/configs';
+	import { getPrompts } from '$lib/apis/prompts';
 
 	import AdvancedParams from '$lib/components/chat/Settings/Advanced/AdvancedParams.svelte';
 	import Tags from '$lib/components/common/Tags.svelte';
@@ -32,6 +33,7 @@
 	import { updateModelAccessGrants } from '$lib/apis/models';
 
 	const i18n = getContext('i18n');
+	const DEFAULT_MODEL_PROFILE_IMAGE_URL = 'https://dev.d-reams.com/img/logo-d.7378c4bf.png';
 
 	export let onSubmit: Function;
 	export let onBack: null | Function = null;
@@ -72,12 +74,15 @@
 	}
 
 	let system = '';
+	let savedPrompts = [];
+	let selectedSystemPromptId = '';
+	let loadingSavedPrompts = false;
 	let info = {
 		id: '',
 		base_model_id: null,
 		name: '',
 		meta: {
-			profile_image_url: `${WEBUI_BASE_URL}/static/favicon.png`,
+			profile_image_url: DEFAULT_MODEL_PROFILE_IMAGE_URL,
 			description: '',
 			suggestion_prompts: null,
 			tags: []
@@ -107,6 +112,29 @@
 	let accessGrants = [];
 	let terminalId = '';
 	let tts = { voice: '' };
+
+	const getSelectedSystemPrompt = () => {
+		return savedPrompts.find((prompt) => prompt.id === selectedSystemPromptId);
+	};
+
+	const replaceSystemPromptWithSavedPrompt = () => {
+		const prompt = getSelectedSystemPrompt();
+		if (!prompt) {
+			return;
+		}
+
+		system = prompt.content ?? '';
+	};
+
+	const appendSavedPromptToSystemPrompt = () => {
+		const prompt = getSelectedSystemPrompt();
+		if (!prompt) {
+			return;
+		}
+
+		const content = prompt.content ?? '';
+		system = system.trim() ? `${system.trim()}\n\n${content}` : content;
+	};
 
 	const submitHandler = async () => {
 		loading = true;
@@ -252,6 +280,13 @@
 		await tools.set(await getTools(localStorage.token));
 		skillsList = (await getSkills(localStorage.token).catch(() => null)) ?? [];
 		await functions.set(await getFunctions(localStorage.token));
+		loadingSavedPrompts = true;
+		savedPrompts =
+			(await getPrompts(localStorage.token).catch((error) => {
+				toast.error(`${error}`);
+				return [];
+			})) ?? [];
+		loadingSavedPrompts = false;
 
 		// Fetch admin-configured default model metadata so the editor
 		// reflects the actual defaults rather than hardcoded values
@@ -496,7 +531,7 @@
 							<div class="self-center">
 								<button
 									class="rounded-2xl flex shrink-0 items-center {info.meta.profile_image_url !==
-									`${WEBUI_BASE_URL}/static/favicon.png`
+									DEFAULT_MODEL_PROFILE_IMAGE_URL
 										? 'bg-transparent'
 										: 'bg-white'} shadow-xl group relative"
 									type="button"
@@ -513,7 +548,7 @@
 										/>
 									{:else}
 										<img
-											src="{WEBUI_BASE_URL}/static/favicon.png"
+											src={DEFAULT_MODEL_PROFILE_IMAGE_URL}
 											alt="model profile"
 											class=" rounded-xl size-20 md:size-48 object-cover shrink-0"
 										/>
@@ -549,7 +584,7 @@
 									<button
 										class="px-2 py-1 text-gray-500 rounded-lg text-xs"
 										on:click={() => {
-											info.meta.profile_image_url = `${WEBUI_BASE_URL}/static/favicon.png`;
+											info.meta.profile_image_url = DEFAULT_MODEL_PROFILE_IMAGE_URL;
 										}}
 										type="button"
 									>
@@ -690,7 +725,53 @@
 
 						<div class="mt-2">
 							<div class="my-1">
-								<div class=" text-xs font-medium mb-2">{$i18n.t('System Prompt')}</div>
+								<div class="flex w-full justify-between gap-2 mb-2">
+									<div class=" text-xs font-medium self-center">{$i18n.t('System Prompt')}</div>
+
+									<div class="flex items-center gap-1.5">
+										<select
+											class="text-xs max-w-44 rounded-lg border border-gray-100/30 dark:border-gray-850/30 bg-transparent px-2 py-1 outline-hidden"
+											bind:value={selectedSystemPromptId}
+											disabled={loadingSavedPrompts || savedPrompts.length === 0}
+											aria-label={$i18n.t('Select Prompt AI')}
+										>
+											<option value="">
+												{loadingSavedPrompts
+													? $i18n.t('Loading prompts...')
+													: savedPrompts.length
+														? $i18n.t('Select Prompt AI')
+														: $i18n.t('No prompts found')}
+											</option>
+											{#each savedPrompts as prompt}
+												<option value={prompt.id}>
+													{prompt.name || prompt.command}
+												</option>
+											{/each}
+										</select>
+
+										<button
+											class="flex text-xs items-center space-x-1 py-1 rounded-xl bg-transparent dark:text-gray-200 transition disabled:opacity-40"
+											type="button"
+											disabled={!selectedSystemPromptId}
+											on:click={replaceSystemPromptWithSavedPrompt}
+										>
+											<div class=" self-center font-medium line-clamp-1">
+												{$i18n.t('Use')}
+											</div>
+										</button>
+
+										<button
+											class="flex text-xs items-center space-x-1 py-1 rounded-xl bg-transparent dark:text-gray-200 transition disabled:opacity-40"
+											type="button"
+											disabled={!selectedSystemPromptId}
+											on:click={appendSavedPromptToSystemPrompt}
+										>
+											<div class=" self-center font-medium line-clamp-1">
+												{$i18n.t('Append')}
+											</div>
+										</button>
+									</div>
+								</div>
 								<div>
 									<Textarea
 										className=" text-sm w-full bg-transparent outline-hidden resize-none overflow-y-hidden "

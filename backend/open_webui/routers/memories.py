@@ -20,6 +20,62 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _user_memories_cache_key(user_id: str) -> str:
+    return f'memories:user:{user_id}'
+
+
+async def _get_user_memories(
+    request: Request,
+    user_id: str,
+    db: AsyncSession | None = None,
+) -> list[MemoryModel]:
+    cache_key = _user_memories_cache_key(user_id)
+    cached_memories = await request.app.state.memory_cache.get(cache_key)
+    if cached_memories is not None:
+        return cached_memories
+
+    memories = await Memories.get_memories_by_user_id(user_id, db=db)
+    await request.app.state.memory_cache.set(cache_key, memories or [])
+    return memories or []
+
+
+async def _invalidate_user_memories(request: Request, user_id: str) -> None:
+    await request.app.state.memory_cache.delete(_user_memories_cache_key(user_id))
+
+
+async def create_memory_entry(
+    request: Request,
+    user_id: str,
+    content: str,
+    user=None,
+) -> MemoryModel | None:
+    """Create a memory row, invalidate cache, and upsert its vector."""
+    content = (content or '').strip()
+    if not content:
+        return None
+
+    memory = await Memories.insert_new_memory(user_id, content)
+    if not memory:
+        return None
+
+    await _invalidate_user_memories(request, user_id)
+
+    vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
+    await ASYNC_VECTOR_DB_CLIENT.upsert(
+        collection_name=f'user-memory-{user_id}',
+        items=[
+            {
+                'id': memory.id,
+                'text': memory.content,
+                'vector': vector,
+                'metadata': {'created_at': memory.created_at},
+            }
+        ],
+    )
+
+    return memory
+
+
 ############################
 # GetMemories
 # Let what is remembered here spare someone the cost
@@ -45,7 +101,7 @@ async def get_memories(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    return await Memories.get_memories_by_user_id(user.id, db=db)
+    return await _get_user_memories(request, user.id, db=db)
 
 
 ############################
@@ -85,23 +141,7 @@ async def add_memory(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    memory = await Memories.insert_new_memory(user.id, form_data.content)
-
-    vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
-
-    await ASYNC_VECTOR_DB_CLIENT.upsert(
-        collection_name=f'user-memory-{user.id}',
-        items=[
-            {
-                'id': memory.id,
-                'text': memory.content,
-                'vector': vector,
-                'metadata': {'created_at': memory.created_at},
-            }
-        ],
-    )
-
-    return memory
+    return await create_memory_entry(request, user.id, form_data.content, user=user)
 
 
 ############################
@@ -136,7 +176,7 @@ async def query_memory(
             detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
-    memories = await Memories.get_memories_by_user_id(user.id)
+    memories = await _get_user_memories(request, user.id)
     if not memories:
         raise HTTPException(status_code=404, detail='No memories found for user')
 
@@ -213,7 +253,7 @@ async def reset_memory_from_vector_db(
 
     await ASYNC_VECTOR_DB_CLIENT.delete_collection(f'user-memory-{user.id}')
 
-    memories = await Memories.get_memories_by_user_id(user.id)
+    memories = await _get_user_memories(request, user.id)
 
     # Generate vectors in parallel
     vectors = await asyncio.gather(
@@ -265,6 +305,7 @@ async def delete_memory_by_user_id(
     result = await Memories.delete_memories_by_user_id(user.id, db=db)
 
     if result:
+        await _invalidate_user_memories(request, user.id)
         try:
             await ASYNC_VECTOR_DB_CLIENT.delete_collection(f'user-memory-{user.id}')
         except Exception as e:
@@ -305,6 +346,8 @@ async def update_memory_by_id(
     memory = await Memories.update_memory_by_id_and_user_id(memory_id, user.id, form_data.content)
     if memory is None:
         raise HTTPException(status_code=404, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    await _invalidate_user_memories(request, user.id)
 
     if form_data.content is not None:
         vector = await request.app.state.EMBEDDING_FUNCTION(memory.content, user=user)
@@ -354,6 +397,7 @@ async def delete_memory_by_id(
     result = await Memories.delete_memory_by_id_and_user_id(memory_id, user.id, db=db)
 
     if result:
+        await _invalidate_user_memories(request, user.id)
         await ASYNC_VECTOR_DB_CLIENT.delete(collection_name=f'user-memory-{user.id}', ids=[memory_id])
         return True
 

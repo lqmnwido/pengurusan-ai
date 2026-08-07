@@ -45,7 +45,7 @@ from open_webui.models.functions import Functions
 from open_webui.models.models import Models
 from open_webui.models.oauth_sessions import OAuthSessions
 from open_webui.models.users import UserModel, Users
-from open_webui.retrieval.utils import get_sources_from_items
+from open_webui.retrieval.graphs import run_retrieval_graph
 from open_webui.routers.images import (
     CreateImageForm,
     EditImageForm,
@@ -73,6 +73,7 @@ from open_webui.socket.main import (
     get_event_emitter,
 )
 from open_webui.utils.access_control import has_connection_access, has_permission
+from open_webui.utils.auto_memory import capture_user_memories
 from open_webui.utils.access_control.files import get_accessible_folder_files
 from open_webui.utils.chat import generate_chat_completion
 from open_webui.utils.code_interpreter import execute_code_jupyter
@@ -2010,8 +2011,7 @@ async def chat_completion_files_handler(
             queries = [get_last_user_message(body['messages']) or '']
 
         try:
-            # Directly await async get_sources_from_items (no thread needed - fully async now)
-            sources = await get_sources_from_items(
+            sources = await run_retrieval_graph(
                 request=request,
                 items=files,
                 queries=queries,
@@ -3115,6 +3115,8 @@ async def background_tasks_handler(ctx):
         messages = form_data.get('messages', [])
         if message:
             message['model'] = form_data.get('model')
+
+    await capture_user_memories(request, messages, user)
 
     if message and 'model' in message:
         if tasks and messages:

@@ -3,18 +3,31 @@
 @config '../tailwind.config.js';
 
 @theme {
-	--color-gray-50: oklch(0.98 0 0);
-	--color-gray-100: oklch(0.94 0 0);
-	--color-gray-200: oklch(0.92 0 0);
-	--color-gray-300: oklch(0.85 0 0);
-	--color-gray-400: oklch(0.77 0 0);
-	--color-gray-500: oklch(0.69 0 0);
-	--color-gray-600: oklch(0.51 0 0);
-	--color-gray-700: oklch(0.42 0 0);
-	--color-gray-800: oklch(0.32 0 0);
-	--color-gray-850: oklch(0.27 0 0);
-	--color-gray-900: oklch(0.2 0 0);
-	--color-gray-950: oklch(0.16 0 0);
+	--color-gray-50: #f8f8fb;
+	--color-gray-100: #eff2f7;
+	--color-gray-200: #e9edf5;
+	--color-gray-300: #d7dde8;
+	--color-gray-400: #a6b0cf;
+	--color-gray-500: #74788d;
+	--color-gray-600: #5b6275;
+	--color-gray-700: #495057;
+	--color-gray-800: #343a40;
+	--color-gray-850: #2a3042;
+	--color-gray-900: #222736;
+	--color-gray-950: #1c2230;
+	--color-blue-50: #f3f5ff;
+	--color-blue-100: #e9edff;
+	--color-blue-200: #d8defd;
+	--color-blue-300: #bbc5fb;
+	--color-blue-400: #8797f2;
+	--color-blue-500: #556ee6;
+	--color-blue-600: #485ec4;
+	--color-blue-700: #3b4da5;
+	--color-blue-800: #303f86;
+	--color-blue-900: #29366f;
+	--color-emerald-500: #34c38f;
+	--color-amber-500: #f1b44c;
+	--color-red-500: #f46a6a;
 }
 
 /*
@@ -39,9 +52,24 @@
 	html,
 	pre {
 		font-family:
-			-apple-system, BlinkMacSystemFont, 'Inter', 'Vazirmatn', ui-sans-serif, system-ui, 'Segoe UI',
-			Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif, 'Helvetica Neue', Arial,
-			'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+			'Inter',
+			-apple-system,
+			BlinkMacSystemFont,
+			'Vazirmatn',
+			ui-sans-serif,
+			system-ui,
+			'Segoe UI',
+			Roboto,
+			Ubuntu,
+			Cantarell,
+			'Noto Sans',
+			sans-serif,
+			'Helvetica Neue',
+			Arial,
+			'Apple Color Emoji',
+			'Segoe UI Emoji',
+			'Segoe UI Symbol',
+			'Noto Color Emoji';
 	}
 
 	pre {

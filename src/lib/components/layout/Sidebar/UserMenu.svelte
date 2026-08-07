@@ -58,7 +58,7 @@
 
 	const dispatch = createEventDispatcher();
 
-	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace'];
+	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'playground'];
 
 	$: pinnedItems = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
 
@@ -334,7 +334,7 @@
 								/>
 							</svg>
 						</div>
-						<div class="self-center truncate">{$i18n.t('Workspace')}</div>
+						<div class="self-center truncate">Konfigurasi AI</div>
 					</a>
 					{#if shiftKey}
 						<Tooltip
@@ -532,7 +532,7 @@
 						<div class="self-center mr-3">
 							<Code className="size-5" strokeWidth="1.5" />
 						</div>
-						<div class="self-center truncate">{$i18n.t('Playground')}</div>
+						<div class="self-center truncate">Uji Respon AI</div>
 					</a>
 					{#if shiftKey}
 						<Tooltip

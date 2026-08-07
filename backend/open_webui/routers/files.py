@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -27,6 +28,10 @@ from open_webui.internal.db import get_async_db_context, get_async_session
 from open_webui.models.access_grants import AccessGrants
 from open_webui.models.channels import Channels
 from open_webui.models.chats import Chats
+from open_webui.models.document_translation_jobs import (
+    DocumentTranslationJobModel,
+    DocumentTranslationJobs,
+)
 from open_webui.models.files import (
     FileForm,
     FileListResponse,
@@ -42,8 +47,9 @@ from open_webui.routers.audio import transcribe
 from open_webui.routers.retrieval import ProcessFileForm, process_file
 from open_webui.storage.provider import Storage
 from open_webui.utils.auth import get_admin_user, get_verified_user
+from open_webui.utils.document_translation import DEFAULT_TRANSLATION_MODEL, document_translator
 from open_webui.utils.misc import strict_match_mime_type
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
@@ -52,6 +58,9 @@ router = APIRouter()
 
 
 from open_webui.utils.access_control.files import has_access_to_file
+
+_translation_queue_tasks: dict[str, asyncio.Task] = {}
+_translation_queue_lock = asyncio.Lock()
 
 ############################
 # Upload File
@@ -103,6 +112,281 @@ def _cleanup_local_cache(file_path: str) -> None:
             log.debug(f'Cleaned up local cache: {local_path}')
     except OSError as e:
         log.warning(f'Failed to clean up local cache for {file_path}: {e}')
+
+
+def _build_source_preview(file_name: str, file_content_type: str | None, file_path: str) -> str:
+    preview = ''
+    try:
+        file_extension = os.path.splitext(file_name)[1].lower().lstrip('.')
+        if file_extension == 'docx' or file_content_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            from docx import Document
+
+            document = Document(file_path)
+            lines: list[str] = []
+            for paragraph in document.paragraphs:
+                text = paragraph.text.strip()
+                if text:
+                    lines.append(text)
+            preview = '\n'.join(lines).strip()
+        elif file_extension == 'pdf' or file_content_type == 'application/pdf':
+            preview = ''
+            try:
+                import fitz
+
+                with fitz.open(file_path) as pdf:
+                    pages: list[str] = []
+                    for page in pdf:
+                        page_text = page.get_text('text').strip()
+                        if page_text:
+                            pages.append(page_text)
+                    preview = '\n\n'.join(pages).strip()
+            except Exception:
+                preview = ''
+    except Exception as e:
+        log.debug(f'Failed to build source preview: {e}')
+
+    if not preview:
+        preview = 'Source preview unavailable.'
+    return preview
+
+
+class TranslationUploadForm(BaseModel):
+    target_language: str = 'Malay'
+    source_language: str = 'auto'
+    model: str = DEFAULT_TRANSLATION_MODEL
+    force_ocr: bool = False
+    generate_output_file: bool = True
+
+
+class TranslationJobFileResponse(BaseModel):
+    id: str
+    filename: str
+
+
+class TranslationJobPublicResponse(BaseModel):
+    id: str
+    source_file_id: str
+    source_filename: str
+    source_mime_type: str | None = None
+    source_preview: str | None = None
+    progress: list[str] = Field(default_factory=list)
+    status: str
+    translation_text: str | None = None
+    visual_qa: dict | None = None
+    created_at: int
+    updated_at: int
+    completed_at: int | None = None
+
+
+class TranslationJobResponse(BaseModel):
+    job: TranslationJobPublicResponse
+    file: TranslationJobFileResponse | None = None
+    translation_text: str | None = None
+
+
+def _public_job(job: DocumentTranslationJobModel) -> TranslationJobPublicResponse:
+    return TranslationJobPublicResponse(
+        id=job.id,
+        source_file_id=job.source_file_id,
+        source_filename=job.source_filename,
+        source_mime_type=job.source_mime_type,
+        source_preview=job.source_preview,
+        progress=job.progress or [],
+        status=job.status,
+        translation_text=job.translation_text,
+        visual_qa=job.visual_qa,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        completed_at=job.completed_at,
+    )
+
+
+async def _job_response(job_id: str, user, db: Optional[AsyncSession] = None):
+    job = await DocumentTranslationJobs.get_job_by_id(job_id, db=db)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if user.role != 'admin' and job.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    file_response = None
+    if job.output_file_id:
+        file_record = await Files.get_file_by_id(job.output_file_id, db=db)
+        if file_record:
+            file_response = TranslationJobFileResponse(id=file_record.id, filename=file_record.filename)
+
+    return TranslationJobResponse(
+        job=_public_job(job),
+        file=file_response,
+        translation_text=job.translation_text,
+    )
+
+
+async def _update_job(job_id: str, **updates):
+    await DocumentTranslationJobs.update_job_by_id(job_id, updates)
+
+
+async def _has_running_translation_job(user_id: str) -> bool:
+    return await DocumentTranslationJobs.has_active_job_by_user_id(user_id)
+
+
+def _has_translation_queue_worker(user_id: str) -> bool:
+    current_task = _translation_queue_tasks.get(user_id)
+    return bool(current_task and not current_task.done())
+
+
+async def _run_translation_job(
+    request: Request,
+    user,
+    job_id: str,
+    source_file_id: str,
+    source_filename: str,
+    source_mime_type: str | None,
+    target_language: str,
+    source_language: str,
+    model: str,
+    force_ocr: bool,
+    generate_output_file: bool,
+    source_preview: str,
+):
+    async def update_progress(progress: list[str], translation_text: str | None = None):
+        updates = {'progress': progress}
+        if translation_text is not None:
+            updates['translation_text'] = translation_text
+        await _update_job(job_id, **updates)
+
+    try:
+        await _update_job(job_id, status='running', progress=['Loading source document'])
+
+        file_record = await Files.get_file_by_id(source_file_id)
+        if not file_record or not file_record.path:
+            raise RuntimeError('Source file could not be located')
+
+        file_path = await asyncio.to_thread(Storage.get_file, file_record.path)
+        if not file_path or not os.path.isfile(file_path):
+            raise RuntimeError('Source file could not be read')
+
+        await _update_job(job_id, progress=['Extracting text'])
+        result = await document_translator.translate_document(
+            request=request,
+            user=user,
+            file_path=file_path,
+            source_filename=source_filename,
+            source_mime_type=source_mime_type,
+            target_language=target_language,
+            source_language=source_language,
+            model=model,
+            force_ocr=force_ocr,
+            generate_output_file=generate_output_file,
+            progress_callback=update_progress,
+        )
+
+        translation_text = result.get('translation_text', '')
+        visual_qa = result.get('visual_qa')
+        progress = ['Extracted text', 'Translated document']
+
+        output_file_id = None
+        output_file_name = None
+        if generate_output_file and result.get('file_path') and result.get('output_filename'):
+            translated_filename = result['output_filename']
+            file_contents = result.get('file_contents')
+            file_path_generated = result['file_path']
+            output_file_name = translated_filename
+
+            file_item = await Files.insert_new_file(
+                user.id,
+                FileForm(
+                    **{
+                        'id': str(uuid.uuid4()),
+                        'filename': translated_filename,
+                        'path': file_path_generated,
+                        'data': {'status': 'completed'},
+                        'meta': {
+                            'name': translated_filename,
+                            'content_type': (
+                                'application/pdf'
+                                if translated_filename.lower().endswith('.pdf')
+                                else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                            ),
+                            'size': len(file_contents) if file_contents is not None else None,
+                            'translation_job_id': job_id,
+                            'source_file_id': source_file_id,
+                            'visual_qa': visual_qa,
+                        },
+                    }
+                ),
+            )
+
+            if file_item:
+                output_file_id = file_item.id
+
+        await _update_job(
+            job_id,
+            status='completed',
+            progress=[],
+            translation_text=translation_text,
+            visual_qa=visual_qa,
+            source_preview=source_preview,
+            output_file_id=output_file_id,
+            output_file_name=output_file_name,
+            completed_at=int(time.time()),
+            error=None,
+        )
+    except Exception as e:
+        log.exception(f'Translation job failed: {job_id}')
+        await _update_job(
+            job_id,
+            status='failed',
+            progress=[],
+            source_preview=source_preview,
+            error=str(e.detail) if hasattr(e, 'detail') else str(e),
+            completed_at=int(time.time()),
+        )
+
+
+async def _translation_queue_worker(request: Request, user):
+    user_id = user.id
+    try:
+        while True:
+            job = await DocumentTranslationJobs.get_next_queued_job_by_user_id(user_id)
+            if not job:
+                return
+
+            await _run_translation_job(
+                request=request,
+                user=user,
+                job_id=job.id,
+                source_file_id=job.source_file_id,
+                source_filename=job.source_filename,
+                source_mime_type=job.source_mime_type,
+                target_language=job.target_language,
+                source_language=job.source_language or 'auto',
+                model=job.model or DEFAULT_TRANSLATION_MODEL,
+                force_ocr=job.force_ocr,
+                generate_output_file=job.generate_output_file,
+                source_preview=job.source_preview or '',
+            )
+            await asyncio.sleep(0)
+    finally:
+        async with _translation_queue_lock:
+            current_task = _translation_queue_tasks.get(user_id)
+            if current_task is asyncio.current_task():
+                _translation_queue_tasks.pop(user_id, None)
+
+
+async def _dispatch_translation_queue(request: Request, user) -> bool:
+    user_id = user.id
+    async with _translation_queue_lock:
+        current_task = _translation_queue_tasks.get(user_id)
+        if current_task and not current_task.done():
+            return False
+
+        if await _has_running_translation_job(user_id):
+            return False
+
+        task = asyncio.create_task(_translation_queue_worker(request, user))
+        _translation_queue_tasks[user_id] = task
+        return True
 
 
 async def process_uploaded_file(
@@ -468,6 +752,182 @@ async def delete_all_files(user=Depends(get_admin_user), db: AsyncSession = Depe
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ERROR_MESSAGES.DEFAULT('Error deleting files'),
         )
+
+
+############################
+# Document Translation Jobs
+############################
+
+
+@router.post('/translation-jobs/upload', response_model=TranslationJobResponse)
+async def upload_translation_job(
+    request: Request,
+    file: UploadFile = File(...),
+    target_language: str = Form('Malay'),
+    source_language: str = Form('auto'),
+    model: str = Form(DEFAULT_TRANSLATION_MODEL),
+    force_ocr: bool = Form(False),
+    generate_output_file: bool = Form(True),
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=ERROR_MESSAGES.DEFAULT('Missing file name'),
+        )
+
+    source_filename = os.path.basename(file.filename)
+    source_id = str(uuid.uuid4())
+    stored_filename = f'{source_id}_{source_filename}'
+
+    try:
+        contents, file_path = await asyncio.to_thread(
+            Storage.upload_file,
+            file.file,
+            stored_filename,
+            {
+                'OpenWebUI-User-Email': user.email,
+                'OpenWebUI-User-Id': user.id,
+                'OpenWebUI-User-Name': user.name,
+                'OpenWebUI-File-Id': source_id,
+            },
+        )
+
+        source_file = await Files.insert_new_file(
+            user.id,
+            FileForm(
+                **{
+                    'id': source_id,
+                    'filename': source_filename,
+                    'path': file_path,
+                    'data': {'status': 'completed'},
+                    'meta': {
+                        'name': source_filename,
+                        'content_type': (file.content_type if isinstance(file.content_type, str) else None),
+                        'size': len(contents),
+                    },
+                }
+            ),
+            db=db,
+        )
+
+        if not source_file:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.DEFAULT('Error saving uploaded document'),
+            )
+
+        source_preview = await asyncio.to_thread(
+            _build_source_preview,
+            source_filename,
+            file.content_type if isinstance(file.content_type, str) else None,
+            file_path,
+        )
+
+        queue_busy = _has_translation_queue_worker(user.id) or await _has_running_translation_job(user.id)
+        job_id = str(uuid.uuid4())
+        job = await DocumentTranslationJobs.create_job(
+            {
+                'id': job_id,
+                'user_id': user.id,
+                'source_file_id': source_file.id,
+                'source_filename': source_filename,
+                'source_mime_type': file.content_type if isinstance(file.content_type, str) else None,
+                'source_preview': source_preview,
+                'target_language': target_language,
+                'source_language': source_language,
+                'model': model,
+                'force_ocr': force_ocr,
+                'generate_output_file': generate_output_file,
+                'status': 'queued',
+                'progress': (
+                    ['Queued translation job', 'Waiting for current translation job to finish']
+                    if queue_busy
+                    else ['Queued translation job']
+                ),
+            },
+            db=db,
+        )
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=ERROR_MESSAGES.DEFAULT('Error creating translation job'),
+            )
+
+        await _dispatch_translation_queue(request, user)
+
+        return await _job_response(job_id, user, db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=ERROR_MESSAGES.DEFAULT(str(e)),
+        )
+
+
+@router.get('/translation-jobs/history', response_model=list[TranslationJobResponse])
+async def list_translation_jobs(
+    user=Depends(get_verified_user),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_async_session),
+):
+    user_id = None if user.role == 'admin' else user.id
+    jobs = await DocumentTranslationJobs.get_jobs_by_user_id(user_id=user_id, skip=skip, limit=limit, db=db)
+
+    results: list[TranslationJobResponse] = []
+    for job in jobs:
+        file_response = None
+        if job.output_file_id:
+            file_record = await Files.get_file_by_id(job.output_file_id, db=db)
+            if file_record:
+                file_response = TranslationJobFileResponse(id=file_record.id, filename=file_record.filename)
+        results.append(
+            TranslationJobResponse(
+                job=_public_job(job),
+                file=file_response,
+                translation_text=job.translation_text,
+            )
+        )
+
+    return results
+
+
+@router.get('/translation-jobs/{job_id}', response_model=TranslationJobResponse)
+async def get_translation_job(
+    request: Request,
+    job_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    job = await DocumentTranslationJobs.get_job_by_id(job_id, db=db)
+    if job and job.status == 'queued':
+        await _dispatch_translation_queue(request, user)
+    return await _job_response(job_id, user, db=db)
+
+
+@router.delete('/translation-jobs/{job_id}')
+async def delete_translation_job(
+    job_id: str,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    job = await DocumentTranslationJobs.get_job_by_id(job_id, db=db)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    if user.role != 'admin' and job.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    deleted = await DocumentTranslationJobs.delete_job_by_id(job_id, db=db)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+
+    return {'deleted': True, 'job_id': job_id}
 
 
 ############################
