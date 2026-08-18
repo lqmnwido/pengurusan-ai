@@ -1,3 +1,4 @@
+# Disabled: GitHub Actions are currently turned off for this repository.
 name: Create and publish Docker images with specific build args
 
 on:

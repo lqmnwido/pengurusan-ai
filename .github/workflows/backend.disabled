@@ -1,3 +1,4 @@
+# Disabled: GitHub Actions are currently turned off for this repository.
 # ─────────────────────────────────────────────────────────────────────────────
 # Backend CI — Python formatting checks via Ruff
 # Runs on pushes and PRs to main/dev when backend files change

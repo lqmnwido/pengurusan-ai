@@ -1,3 +1,4 @@
+# Disabled: GitHub Actions are currently turned off for this repository.
 # ─────────────────────────────────────────────────────────────────────────────
 # Frontend CI — Lint, format check, build, and unit tests
 # Runs on pushes and PRs to main/dev, skipping backend-only changes
