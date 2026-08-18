@@ -36,7 +36,8 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 COPY package.json package-lock.json ./
-RUN npm ci --force
+COPY vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
+RUN CYPRESS_INSTALL_BINARY=0 ONNXRUNTIME_NODE_INSTALL=skip npm ci --force
 
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}

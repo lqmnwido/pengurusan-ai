@@ -478,6 +478,8 @@ from open_webui.models.messages import Messages
 from open_webui.models.models import Models
 from open_webui.models.users import UserModel, Users
 from open_webui.routers import (
+    agents,
+    agentic_workflows,
     analytics,
     audio,
     auths,
@@ -1455,6 +1457,12 @@ if ENABLE_ADMIN_ANALYTICS:
     app.include_router(analytics.router, prefix='/api/v1/analytics', tags=['analytics'])
 app.include_router(utils.router, prefix='/api/v1/utils', tags=['utils'])
 app.include_router(terminals.router, prefix='/api/v1/terminals', tags=['terminals'])
+app.include_router(agents.router, prefix='/api/v1/agents', tags=['agents'])
+app.include_router(
+    agentic_workflows.router,
+    prefix='/api/v1/agentic-workflows',
+    tags=['agentic-workflows'],
+)
 app.include_router(automations.router, prefix='/api/v1/automations', tags=['automations'])
 app.include_router(calendar.router, prefix='/api/v1/calendars', tags=['calendars'])
 

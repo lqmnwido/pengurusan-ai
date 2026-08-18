@@ -76,7 +76,7 @@
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 
 	const BREAKPOINT = 768;
-	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'playground'];
+	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'playground', 'agents', 'agentic-ai'];
 	const SIDEBAR_LOGO_URL = 'https://dev.d-reams.com/img/logo-d.7378c4bf.png';
 
 	let scrollTop = 0;
@@ -135,6 +135,9 @@
 				);
 			case 'playground':
 				return $user?.role === 'admin';
+			case 'agents':
+			case 'agentic-ai':
+				return $user?.role === 'admin';
 			default:
 				return false;
 		}
@@ -146,22 +149,27 @@
 			workspace: { label: 'Konfigurasi AI', href: '/workspace', iconType: 'workspace' },
 			automations: { label: 'Automations', href: '/automations', iconType: 'automations' },
 			calendar: { label: 'Calendar', href: '/calendar', iconType: 'calendar' },
-			playground: { label: 'Uji Respon AI', href: '/playground', iconType: 'playground' }
+			playground: { label: 'Uji Respon AI', href: '/playground', iconType: 'playground' },
+			agents: { label: 'Konfigurasi Agent', href: '/agents', iconType: 'agents' },
+			'agentic-ai': { label: 'Konfigurasi Agentic AI', href: '/agentic-ai', iconType: 'agentic-ai' }
 		};
 		return items[id];
 	};
 
-	const ensurePlaygroundPinned = async () => {
+	const ensureAgentMenusPinned = async () => {
 		const current = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
-		if (current.includes('playground')) {
-			return;
+		let updated = [...current];
+		if (!updated.includes('playground')) {
+			const workspaceIndex = updated.indexOf('workspace');
+			updated.splice(workspaceIndex >= 0 ? workspaceIndex + 1 : updated.length, 0, 'playground');
 		}
-
-		const workspaceIndex = current.indexOf('workspace');
-		const updated =
-			workspaceIndex >= 0
-				? [...current.slice(0, workspaceIndex + 1), 'playground', ...current.slice(workspaceIndex + 1)]
-				: [...current, 'playground'];
+		if (!updated.includes('agents')) {
+			updated.splice(updated.indexOf('playground') + 1, 0, 'agents');
+		}
+		if (!updated.includes('agentic-ai')) {
+			updated.splice(updated.indexOf('agents') + 1, 0, 'agentic-ai');
+		}
+		if (updated.length === current.length) return;
 
 		settings.set({ ...$settings, pinnedMenuItems: updated });
 		await updateUserSettings(localStorage.token, { ui: $settings });
@@ -617,7 +625,7 @@
 		socketInstance?.on('events', chatActiveEventHandler);
 
 		await tick();
-		await ensurePlaygroundPinned();
+		await ensureAgentMenusPinned();
 		initPinnedMenuSortable();
 
 		return () => {
@@ -942,6 +950,32 @@
 											</svg>
 										{:else if itemId === 'playground'}
 											<Code className="size-4.5" />
+										{:else if itemId === 'agents'}
+											<svg
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												class="size-4.5"
+												><path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													d="M9.75 3.75h4.5m-2.25 0V2.25m-5.25 6h10.5A2.25 2.25 0 0 1 19.5 10.5v6.75a2.25 2.25 0 0 1-2.25 2.25H6.75a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25ZM8.25 13.5h.008v.008H8.25V13.5Zm7.5 0h.008v.008h-.008V13.5ZM9 16.5h6"
+												/></svg
+											>
+										{:else if itemId === 'agentic-ai'}
+											<svg
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												class="size-4.5"
+												><path
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													d="M4.5 6.75h5.25m4.5 0h5.25M9.75 4.5v4.5m4.5 2.25h5.25m-15 0h5.25m4.5-2.25v4.5M4.5 17.25h5.25m4.5 0h5.25M9.75 15v4.5"
+												/></svg
+											>
 										{/if}
 									</div>
 								</a>
@@ -1188,6 +1222,32 @@
 												</svg>
 											{:else if itemId === 'playground'}
 												<Code className="size-4.5" strokeWidth="2" />
+											{:else if itemId === 'agents'}
+												<svg
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+													class="size-4.5"
+													><path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														d="M9.75 3.75h4.5m-2.25 0V2.25m-5.25 6h10.5A2.25 2.25 0 0 1 19.5 10.5v6.75a2.25 2.25 0 0 1-2.25 2.25H6.75a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25ZM8.25 13.5h.008v.008H8.25V13.5Zm7.5 0h.008v.008h-.008V13.5ZM9 16.5h6"
+													/></svg
+												>
+											{:else if itemId === 'agentic-ai'}
+												<svg
+													viewBox="0 0 24 24"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"
+													class="size-4.5"
+													><path
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														d="M4.5 6.75h5.25m4.5 0h5.25M9.75 4.5v4.5m4.5 2.25h5.25m-15 0h5.25m4.5-2.25v4.5M4.5 17.25h5.25m4.5 0h5.25M9.75 15v4.5"
+													/></svg
+												>
 											{/if}
 										</div>
 

@@ -28,6 +28,11 @@ export default defineConfig({
 		APP_VERSION: JSON.stringify(process.env.npm_package_version),
 		APP_BUILD_HASH: JSON.stringify(process.env.APP_BUILD_HASH || 'dev-build')
 	},
+	server: {
+		watch: {
+			ignored: ['**/.venv/**', '**/venv/**']
+		}
+	},
 	build: {
 		sourcemap: true,
 		rollupOptions: {

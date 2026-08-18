@@ -87,6 +87,371 @@ We are incredibly grateful for the generous support of our sponsors. Their contr
 
 ## How to Install 🚀
 
+### Native development and production (without Docker)
+
+This is the recommended workflow for Pengurusan AI. The application runs directly
+on the host; PostgreSQL, MinIO, Temporal, and model servers are separate local or
+managed services.
+
+#### Requirements
+
+- Linux server or development machine
+- Node.js 22 and npm
+- Python 3.11 or 3.12, including the `venv` module
+- PostgreSQL with the `pgvector` extension
+- MinIO or another S3-compatible object store
+- Temporal server when durable agent workflows are enabled
+
+List every supported command at any time:
+
+```bash
+make help
+```
+
+#### Make command reference
+
+| Command               | Purpose                                                                                                                                    | When to run                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `make help`           | Displays every Make command without changing the environment.                                                                              | Any time                                             |
+| `make setup`          | Creates `.env` when missing, recreates/updates `.venv`, installs locked Python and npm dependencies, and installs the pinned OpenClaw CLI. | First install and after dependency changes           |
+| `make dev`            | Runs Vite on 5173, the reloadable API on 8080, and the agent worker when `TEMPORAL_ENABLED=true`.                                          | Local development                                    |
+| `make build`          | Downloads/prepares Pyodide when required and builds the frontend into `build/`.                                                            | Before production serving                            |
+| `make serve`          | Runs the production backend without reload and serves the built frontend and API on port 8080.                                             | Production web process                               |
+| `make agent-worker`   | Runs the Pengurusan AI Temporal worker on `TEMPORAL_TASK_QUEUE`.                                                                           | Separate production process when Temporal is enabled |
+| `make openclaw-setup` | Starts the one-time OpenClaw provider and authentication onboarding.                                                                       | Once per environment, before enabling OpenClaw       |
+| `make deploy`         | Runs `make setup` followed by `make build`. It does not start or restart services.                                                         | Initial production install or release deployment     |
+| `make install`        | Starts the legacy Docker Compose deployment.                                                                                               | Docker users only                                    |
+| `make start`          | Starts existing Docker Compose services.                                                                                                   | Docker users only                                    |
+| `make startAndBuild`  | Builds and starts Docker Compose services.                                                                                                 | Docker users only                                    |
+| `make stop`           | Stops Docker Compose services.                                                                                                             | Docker users only                                    |
+| `make remove`         | Runs the confirmation-based Docker removal script.                                                                                         | Docker users only                                    |
+| `make update`         | Updates Ollama models and source, then rebuilds Docker services.                                                                           | Docker users only                                    |
+
+Running `make` without a target displays the same help and does not install or
+start anything.
+
+#### Local developer installation
+
+For the first local setup, create and configure `.env`, then install the locked frontend and backend dependencies:
+
+```bash
+git clone <repository-url> pengurusan-ai
+cd pengurusan-ai
+nvm use 22
+cp .env.example .env
+# Update DATABASE_URL, PGVECTOR_DB_URL, MinIO credentials, and WEBUI_SECRET_KEY.
+make setup
+```
+
+`make setup` creates and manages `.venv`; developers do not need to activate it
+manually. Ensure PostgreSQL and MinIO are running, then start both application
+processes:
+
+Run the frontend and backend together for local development:
+
+```bash
+make dev
+```
+
+The frontend is available at `http://localhost:5173` and the backend at `http://localhost:8080`. Press `Ctrl+C` once to stop both.
+
+#### Native production deployment
+
+Use a dedicated non-root service account and a stable checkout path. PostgreSQL,
+MinIO, and (when enabled) Temporal must be reachable using the addresses in
+`.env`. Do not commit `.env`.
+
+Create production configuration and use unique passwords and a long random
+secret:
+
+```bash
+cp .env.example .env
+openssl rand -hex 32
+# Put the generated value in WEBUI_SECRET_KEY and configure the service URLs.
+```
+
+Recommended production overrides include:
+
+```env
+DATABASE_URL='postgresql://openwebui:strong-password@127.0.0.1:5432/openwebui'
+PGVECTOR_DB_URL='postgresql://openwebui:strong-password@127.0.0.1:5432/openwebui'
+STORAGE_PROVIDER='s3'
+S3_ENDPOINT_URL='http://127.0.0.1:9000'
+S3_ACCESS_KEY_ID='openwebui'
+S3_SECRET_ACCESS_KEY='strong-minio-password'
+S3_BUCKET_NAME='open-webui'
+WEBUI_SECRET_KEY='replace-with-the-generated-random-value'
+CORS_ALLOW_ORIGIN='https://ai.example.com'
+FORWARDED_ALLOW_IPS='127.0.0.1'
+HOST='127.0.0.1'
+PORT='8080'
+UVICORN_WORKERS='1'
+```
+
+Keep `UVICORN_WORKERS=1` unless the deployment has been explicitly tested with
+multiple application workers. Install dependencies and build the release:
+
+```bash
+make deploy
+```
+
+Run it directly for a first verification:
+
+```bash
+make serve
+```
+
+Check `http://127.0.0.1:8080/health`, then stop it and configure a process
+supervisor. Example `/etc/systemd/system/pengurusan-ai.service`:
+
+```ini
+[Unit]
+Description=Pengurusan AI web application
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pengurusan-ai
+Group=pengurusan-ai
+WorkingDirectory=/opt/pengurusan-ai
+ExecStart=/usr/bin/make serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+If Temporal agents are enabled, create a second service at
+`/etc/systemd/system/pengurusan-ai-worker.service`:
+
+```ini
+[Unit]
+Description=Pengurusan AI Temporal worker
+After=network-online.target pengurusan-ai.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pengurusan-ai
+Group=pengurusan-ai
+WorkingDirectory=/opt/pengurusan-ai
+ExecStart=/usr/bin/make agent-worker
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable the required processes after replacing the example user and path with
+the real deployment values:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pengurusan-ai
+sudo systemctl enable --now pengurusan-ai-worker  # only when Temporal is enabled
+sudo systemctl status pengurusan-ai
+```
+
+Place Nginx, Caddy, or another TLS reverse proxy in front of
+`http://127.0.0.1:8080`. The public proxy must support WebSocket upgrade headers
+and should enforce an upload-size limit appropriate for audio and document
+agents.
+
+To deploy a later release:
+
+```bash
+git pull --ff-only
+make deploy
+sudo systemctl restart pengurusan-ai
+sudo systemctl restart pengurusan-ai-worker  # when enabled
+```
+
+Database migrations run during backend startup. Back up PostgreSQL and MinIO
+before deploying a new release, and never delete an Alembic migration that may
+already have been applied.
+
+#### AI Agent orchestration
+
+OpenClaw is the source of truth for agent identity, instructions, tools, skills,
+workspaces and routing. Create or modify agents in OpenClaw. Administrators use
+**Konfigurasi Agent** only to synchronize that registry, select a model already
+registered under **Workspace → Models**, activate/deactivate Pengurusan AI
+access, and issue an API key for an external system.
+
+OpenClaw is installed globally at the version pinned by `make setup`. Complete
+its one-time provider/auth onboarding, then enable the integration:
+
+```bash
+make setup
+make openclaw-setup
+```
+
+```env
+OPENCLAW_ENABLED=true
+OPENCLAW_COMMAND='/absolute/path/from-command-v-openclaw'
+OPENCLAW_STATE_DIR=./backend/data/openclaw
+OPENCLAW_WORKSPACE_ROOT=./backend/data/openclaw/workspaces
+```
+
+Obtain the executable path with `command -v openclaw`. Use the absolute path in
+production, especially when Node.js is managed by NVM, because systemd does not
+load the deployment user's interactive shell configuration.
+
+Create an agent from the OpenClaw setup interface or CLI, then press **Sync** in
+**Konfigurasi Agent**. Deleting an agent must also be done in OpenClaw; the next
+sync removes it from the active Pengurusan AI list and revokes its external API
+key.
+
+The external endpoint is deliberately narrower than the OpenClaw Gateway API:
+
+```text
+POST /api/v1/agents/external/{pengurusan_agent_id}/invoke
+Authorization: Bearer pai_...
+Content-Type: application/json
+```
+
+```json
+{
+	"message": "Summarize this incident",
+	"session_key": "external-system-conversation-123"
+}
+```
+
+Generate or rotate the bearer key in **Konfigurasi Agent**. The full key is shown
+once and only its SHA-256 hash is stored. Each key is scoped to one active agent;
+never give an external application the OpenClaw Gateway operator token. In
+production, expose this endpoint only over TLS and apply request/rate limits at
+the reverse proxy. Disable all external agent calls with:
+
+```env
+AGENT_EXTERNAL_API_ENABLED=false
+```
+
+Pengurusan AI stores only the OpenClaw link, selected model, active state and
+hashed external credential in PostgreSQL. Agent definitions remain in OpenClaw.
+Agent file outputs use the configured storage provider, so the native MinIO
+setup requires:
+
+```env
+STORAGE_PROVIDER=s3
+S3_ENDPOINT_URL=http://127.0.0.1:9000
+S3_BUCKET_NAME=open-webui
+```
+
+For durable execution, run a Temporal server and configure:
+
+```env
+TEMPORAL_ENABLED=true
+TEMPORAL_ADDRESS=127.0.0.1:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=pengurusan-ai-agents
+```
+
+Start the Temporal worker as a separate supervised process:
+
+```bash
+make agent-worker
+```
+
+The worker exposes `pengurusan_ai.agent.run`, `pengurusan_ai.openclaw.chat`, and
+`pengurusan_ai.voice.v2t`. OpenClaw owns the agent definition, LangGraph compiles
+the configured Voice Intelligence graph, and Temporal executes every graph node
+as a durable activity. MinIO stores file inputs and a new JSON artifact after
+each node, rather than putting large transcripts into Temporal history.
+
+To test an agent in the normal chat locally:
+
+1. Start Temporal and set `TEMPORAL_ENABLED=true` in `.env`.
+2. Run `make dev`; it starts the web processes and agent worker together.
+3. Open **Konfigurasi Agent**, synchronize OpenClaw, choose a model, and set the
+   agent to active.
+4. Start a new chat and select the agent by name. It appears with the
+   **Agent OpenClaw** and **Temporal** tags.
+
+The active setting publishes the agent to signed-in chat users. Disabling it
+removes it from the model selector and rejects new workflow executions.
+
+#### Configurable V2T workflow
+
+Tutorial langkah demi langkah untuk mencipta agent Transkripsi, Diarisasi,
+Chunking, Topik, Ringkasan dan Tematik serta memadankannya dengan kontrak projek
+`temporal-worker` tersedia dalam
+[Agentic AI Voice Workflow](docs/agentic-ai-voice-workflow.md).
+
+Agent settings and agentic workflows are deliberately separate:
+
+- **Konfigurasi Agent** synchronizes OpenClaw agents and manages their main
+  model, active status, and external API key.
+- **Konfigurasi Agentic AI** arranges existing synchronized OpenClaw agents into
+  an ordered LangGraph workflow. Saving an active workflow publishes it in the
+  normal chat model selector.
+
+In **Konfigurasi Agentic AI**, click existing agents in the required order, then
+choose a model and optional instruction for every node. For example,
+`pegawai-ringkasan` followed by `main` runs the summarizer first and passes its
+output to `main` before returning the final chat response.
+
+1. **Transkripsi** — a faster-whisper variant such as `small` or `large-v3`.
+2. **Diarisasi** — Pyannote Community-1 in the native Python worker, or the
+   SpeechBrain + Silero profile in the external `temporal-worker` deployment.
+3. **Pecahan transkrip** — prepares bounded chunks for long recordings.
+4. **Topik** — extracts topics and evidence through its assigned OpenClaw agent.
+5. **Ringkasan** — uses its assigned OpenClaw agent and selected model.
+6. **Analisis tematik** — may use a different agent and model.
+
+Whisper remains the first required node. The remaining selected nodes can be
+reordered because each Temporal activity reads the latest saved artifact. To
+run the native flow, upload an audio file through the platform file store and
+invoke:
+
+```text
+POST /api/v1/agentic-workflows/{workflow_id}/run
+{"file_path":"<platform storage path>","job_id":"meeting-2026-001"}
+```
+
+The start response contains `workflow_id`. Poll durable progress with:
+
+```text
+GET /api/v1/agentic-workflows/runs/{workflow_id}/status
+```
+
+The response reports `current_step`, `progress`, completed/total steps, and the
+latest MinIO `artifact_path`. For Pyannote, install the component from the AI
+component manager, accept its Hugging Face terms, and configure `HF_TOKEN`.
+
+To expose active workflows as MCP tools to an allowed OpenClaw agent, configure
+a unique `AGENTIC_MCP_TOKEN`, start the Pengurusan AI API, then register the
+agent-scoped bridge:
+
+```bash
+make openclaw-agentic-mcp AGENT_ID=pegawai-ringkasan
+```
+
+Restart the OpenClaw Gateway after changing MCP configuration. The bridge reads
+only workflows whose allowlist contains that OpenClaw agent ID. A selected
+workflow is advertised as one tool; Whisper, Pyannote, chunking, topic, summary,
+and thematic nodes remain internal and do not appear as separate tools in every agent.
+Disabled workflows are not advertised. The backend rechecks the allowlist when
+the tool is invoked.
+
+Temporal remains responsible for durable media/file workflows such as the external voice/diarization profile modelled after `temporal-worker`:
+
+```text
+workflow:    AsrWorkflow::start
+workflow q:  ASR_WORKFLOW_QUEUE
+media q:     MEDIA_TASK_QUEUE
+ASR q:       ASR_TASK_QUEUE
+input:       MinIO object key
+output:      transcript JSON/SRT/VTT, chunks and analysis artifacts in MinIO
+```
+
+That profile sends the worker-compatible camel-case input fields (`jobId`, `inputObjectKey`, `mediaTaskQueue`, `asrTaskQueue`, and `targetBucket`). It keeps model execution in the dedicated workers while Pengurusan AI owns agent configuration, authorization, storage selection, and workflow dispatch.
+
 ### Installation via Python pip 🐍
 
 Open WebUI can be installed using pip, the Python package installer. Before proceeding, ensure you're using **Python 3.11** to avoid compatibility issues.

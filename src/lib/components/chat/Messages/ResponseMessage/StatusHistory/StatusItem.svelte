@@ -4,8 +4,10 @@
 	import WebSearchResults from '../WebSearchResults.svelte';
 	import Search from '$lib/components/icons/Search.svelte';
 
+	/** @type {any} */
 	export let status = null;
 	export let done = false;
+	export let expanded = false;
 </script>
 
 {#if !status?.hidden}
@@ -98,6 +100,26 @@
 						</div>
 					{/each}
 				</div>
+			</div>
+		{:else if status?.action === 'agentic_workflow_agent'}
+			<div class="flex min-w-0 flex-1 flex-col gap-1 text-left">
+				<div
+					class="{(done || status?.done) === false
+						? 'shimmer'
+						: ''} text-base text-gray-500 dark:text-gray-400"
+				>
+					{status?.description}
+				</div>
+				{#if expanded && status?.task}
+					<div class="text-sm text-gray-500 dark:text-gray-500">{status.task}</div>
+				{/if}
+				{#if expanded && status?.result}
+					<div
+						class="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+					>
+						{status.result}
+					</div>
+				{/if}
 			</div>
 		{:else if status?.action === 'sources_retrieved' && status?.count !== undefined}
 			<div class="flex flex-col justify-center -space-y-0.5">

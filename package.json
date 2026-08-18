@@ -3,8 +3,8 @@
 	"version": "0.9.6",
 	"private": true,
 	"scripts": {
-		"dev": "npm run pyodide:fetch && vite dev --host",
-		"dev:5050": "npm run pyodide:fetch && vite dev --port 5050",
+		"dev": "vite dev --host",
+		"dev:5050": "vite dev --port 5050",
 		"build": "npm run pyodide:fetch && vite build",
 		"build:watch": "npm run pyodide:fetch && vite build --watch",
 		"preview": "vite preview",
@@ -25,13 +25,13 @@
 		"@sveltejs/adapter-auto": "3.2.2",
 		"@sveltejs/adapter-static": "^3.0.2",
 		"@sveltejs/kit": "^2.5.27",
-		"@sveltejs/vite-plugin-svelte": "^4.0.0",
+		"@sveltejs/vite-plugin-svelte": "^7.3.0",
 		"@tailwindcss/container-queries": "^0.1.1",
 		"@tailwindcss/postcss": "^4.0.0",
 		"@tailwindcss/typography": "^0.5.13",
 		"@typescript-eslint/eslint-plugin": "^8.31.1",
 		"@typescript-eslint/parser": "^8.31.1",
-		"cypress": "^13.15.0",
+		"cypress": "^15.20.1",
 		"eslint": "^8.56.0",
 		"eslint-config-prettier": "^9.1.0",
 		"eslint-plugin-cypress": "^3.4.0",
@@ -47,8 +47,8 @@
 		"tailwindcss": "^4.0.0",
 		"tslib": "^2.4.1",
 		"typescript": "^5.5.4",
-		"vite": "^5.4.21",
-		"vitest": "^1.6.1"
+		"vite": "^8.2.1",
+		"vitest": "^4.1.10"
 	},
 	"type": "module",
 	"dependencies": {
@@ -135,7 +135,7 @@
 		"prosemirror-state": "^1.4.3",
 		"prosemirror-tables": "^1.7.1",
 		"prosemirror-view": "^1.34.3",
-		"pyodide": "^0.28.2",
+		"pyodide": "0.28.3",
 		"shiki": "^4.0.1",
 		"socket.io-client": "^4.2.0",
 		"sortablejs": "^1.15.6",
@@ -148,12 +148,20 @@
 		"uuid": "^9.0.1",
 		"vega": "^6.2.0",
 		"vega-lite": "^6.4.1",
-		"vite-plugin-static-copy": "^2.2.0",
-		"xlsx": "^0.18.5",
+		"vite-plugin-static-copy": "^4.1.1",
+		"xlsx": "file:vendor/xlsx-0.20.3.tgz",
 		"y-prosemirror": "^1.3.7",
 		"y-protocols": "^1.0.7",
 		"yaml": "^2.7.1",
 		"yjs": "^13.6.27"
+	},
+	"overrides": {
+		"@huggingface/transformers": {
+			"sharp": "0.35.0"
+		},
+		"paneforge": {
+			"nanoid": "5.1.16"
+		}
 	},
 	"engines": {
 		"node": ">=18.13.0 <=22.x.x",

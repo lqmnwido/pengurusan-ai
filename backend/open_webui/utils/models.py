@@ -12,6 +12,8 @@ from open_webui.config import (
 from open_webui.env import BYPASS_MODEL_ACCESS_CONTROL, GLOBAL_LOG_LEVEL
 from open_webui.functions import get_function_models
 from open_webui.models.access_grants import AccessGrants
+from open_webui.models.agentic_workflows import AgenticWorkflowConfigurations
+from open_webui.models.agents import AgentConfigurations
 from open_webui.models.functions import Functions
 from open_webui.models.groups import Groups
 from open_webui.models.models import Models
@@ -82,10 +84,6 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
 
     # deep copy the base models to avoid modifying the original list
     models = [model.copy() for model in base_models]
-
-    # If there are no models, return an empty list
-    if len(models) == 0:
-        return []
 
     # Add arena models
     if request.app.state.config.ENABLE_EVALUATION_ARENA_MODELS:
@@ -219,6 +217,60 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
 
             models.append(model)
 
+    # Active OpenClaw agents are first-class chat choices. Their IDs are
+    # deliberately namespaced so they cannot collide with provider model IDs.
+    for agent in await AgentConfigurations.list():
+        if not agent.is_active or not agent.config.openclaw.agent_id:
+            continue
+        models.append(
+            {
+                'id': f'openclaw-agent:{agent.id}',
+                'name': agent.name,
+                'object': 'model',
+                'created': agent.created_at,
+                'owned_by': 'openclaw',
+                'connection_type': 'local',
+                'agent': True,
+                'agent_id': agent.id,
+                'info': {
+                    'meta': {
+                        'description': agent.description or 'OpenClaw agent melalui Temporal',
+                        'capabilities': {
+                            'usage': False,
+                            'citations': False,
+                            'vision': False,
+                        },
+                        'tags': [{'name': 'Agent OpenClaw'}, {'name': 'Temporal'}],
+                    }
+                },
+                'tags': [{'name': 'Agent OpenClaw'}, {'name': 'Temporal'}],
+            }
+        )
+
+    for item in await AgenticWorkflowConfigurations.list():
+        if not item.is_active or not item.config.visible_in_chat or not item.config.nodes:
+            continue
+        models.append(
+            {
+                'id': f'agentic-workflow:{item.id}',
+                'name': item.name,
+                'object': 'model',
+                'created': item.created_at,
+                'owned_by': 'openclaw',
+                'connection_type': 'local',
+                'agentic_workflow': True,
+                'agentic_workflow_id': item.id,
+                'info': {
+                    'meta': {
+                        'description': item.description or 'Aliran agent OpenClaw melalui LangGraph dan Temporal',
+                        'capabilities': {'usage': False, 'citations': False, 'vision': False},
+                        'tags': [{'name': 'Agentic AI'}, {'name': 'LangGraph'}, {'name': 'Temporal'}],
+                    }
+                },
+                'tags': [{'name': 'Agentic AI'}, {'name': 'LangGraph'}, {'name': 'Temporal'}],
+            }
+        )
+
     # Process action_ids to get the actions
     def get_action_items_from_module(function, module):
         actions = []
@@ -324,7 +376,10 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
         return 0
 
     for model in models:
-        action_ids = [
+        is_openclaw_agent = model.get('owned_by') == 'openclaw' and (
+            model.get('agent') or model.get('agentic_workflow')
+        )
+        action_ids = [] if is_openclaw_agent else [
             action_id
             for action_id in set(model.pop('action_ids', [])) | global_action_ids
             if action_id in enabled_action_ids
@@ -376,6 +431,16 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
 
 
 async def check_model_access(user, model, db=None):
+    if model.get('owned_by') == 'openclaw' and model.get('agentic_workflow'):
+        item = await AgenticWorkflowConfigurations.get(model.get('agentic_workflow_id'), db=db)
+        if not item or not item.is_active or not item.config.visible_in_chat:
+            raise Exception('Agentic workflow not found or inactive')
+        return
+    if model.get('owned_by') == 'openclaw' and model.get('agent'):
+        agent = await AgentConfigurations.get(model.get('agent_id'), db=db)
+        if not agent or not agent.is_active:
+            raise Exception('Agent not found or inactive')
+        return
     if model.get('arena'):
         meta = model.get('info', {}).get('meta', {})
         access_grants = meta.get('access_grants', [])
@@ -434,6 +499,12 @@ async def get_filtered_models(models, user, db=None):
 
         filtered_models = []
         for model in models:
+            if model.get('owned_by') == 'openclaw' and model.get('agentic_workflow'):
+                filtered_models.append(model)
+                continue
+            if model.get('owned_by') == 'openclaw' and model.get('agent'):
+                filtered_models.append(model)
+                continue
             if model.get('arena'):
                 meta = model.get('info', {}).get('meta', {})
                 access_grants = meta.get('access_grants', [])

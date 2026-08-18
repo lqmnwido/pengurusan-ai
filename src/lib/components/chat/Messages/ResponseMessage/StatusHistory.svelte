@@ -4,6 +4,7 @@
 
 	import StatusItem from './StatusHistory/StatusItem.svelte';
 	import equal from 'fast-deep-equal';
+	/** @type {any[]} */
 	export let statusHistory = [];
 	export let expand = false;
 
@@ -15,7 +16,9 @@
 		showHistory = false;
 	}
 
+	/** @type {any[]} */
 	let history = [];
+	/** @type {any} */
 	let status = null;
 
 	$: if (history && history.length > 0) {
@@ -39,7 +42,7 @@
 				}}
 			>
 				<div class="flex items-start gap-2">
-					<StatusItem {status} />
+					<StatusItem {status} expanded={showHistory} />
 				</div>
 			</button>
 
@@ -47,7 +50,7 @@
 				<div class="flex flex-row">
 					{#if history.length > 1}
 						<div class="w-full">
-							{#each history as status, idx}
+							{#each history.slice(0, -1) as status, idx}
 								<div class="flex items-stretch gap-2 mb-1">
 									<div class=" ">
 										<div class="pt-3 px-1 mb-1.5">
@@ -57,14 +60,14 @@
 												></span>
 											</span>
 										</div>
-										{#if idx !== history.length - 1}
+										{#if idx !== history.length - 2}
 											<div
 												class="w-[0.5px] ml-[6.5px] h-[calc(100%-14px)] bg-gray-300 dark:bg-gray-700"
-											/>
+											></div>
 										{/if}
 									</div>
 
-									<StatusItem {status} done={true} />
+									<StatusItem {status} done={true} expanded={true} />
 								</div>
 							{/each}
 						</div>

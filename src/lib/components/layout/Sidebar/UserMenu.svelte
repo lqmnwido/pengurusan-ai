@@ -58,7 +58,7 @@
 
 	const dispatch = createEventDispatcher();
 
-	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'playground'];
+	const DEFAULT_PINNED_ITEMS = ['notes', 'workspace', 'playground', 'agents', 'agentic-ai'];
 
 	$: pinnedItems = $settings?.pinnedMenuItems ?? DEFAULT_PINNED_ITEMS;
 
@@ -550,6 +550,114 @@
 								{:else}
 									<Pin className="size-3.5" strokeWidth="1.5" />
 								{/if}
+							</button>
+						</Tooltip>
+					{/if}
+				</div>
+			{/if}
+
+			{#if role === 'admin'}
+				<div class="flex items-center w-full">
+					<a
+						href="/agentic-ai"
+						draggable="false"
+						class="flex flex-1 rounded-xl py-1.5 px-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+						on:click={async (e) => {
+							if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+							e.preventDefault();
+							show = false;
+							goto('/agentic-ai');
+							if ($mobile) {
+								await tick();
+								showSidebar.set(false);
+							}
+						}}
+					>
+						<div class="self-center mr-3">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="size-5"
+								><path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M4.5 6.75h5.25m4.5 0h5.25M9.75 4.5v4.5m4.5 2.25h5.25m-15 0h5.25m4.5-2.25v4.5M4.5 17.25h5.25m4.5 0h5.25M9.75 15v4.5"
+								/></svg
+							>
+						</div>
+						<div class="self-center truncate">Konfigurasi Agentic AI</div>
+					</a>
+					{#if shiftKey}
+						<Tooltip
+							content={isPinned('agentic-ai')
+								? $i18n.t('Unpin from Sidebar')
+								: $i18n.t('Pin to Sidebar')}
+						>
+							<button
+								type="button"
+								class="p-1 mr-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+								on:click|preventDefault|stopPropagation={() => togglePin('agentic-ai')}
+							>
+								{#if isPinned('agentic-ai')}<PinSlash
+										className="size-3.5"
+										strokeWidth="1.5"
+									/>{:else}<Pin className="size-3.5" strokeWidth="1.5" />{/if}
+							</button>
+						</Tooltip>
+					{/if}
+				</div>
+			{/if}
+
+			{#if role === 'admin'}
+				<div class="flex items-center w-full">
+					<a
+						href="/agents"
+						draggable="false"
+						class="flex flex-1 rounded-xl py-1.5 px-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition cursor-pointer select-none"
+						on:click={async (e) => {
+							if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+							e.preventDefault();
+							show = false;
+							goto('/agents');
+							if ($mobile) {
+								await tick();
+								showSidebar.set(false);
+							}
+						}}
+					>
+						<div class="self-center mr-3">
+							<svg
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								class="size-5"
+								><path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M9.75 3.75h4.5m-2.25 0V2.25m-5.25 6h10.5A2.25 2.25 0 0 1 19.5 10.5v6.75a2.25 2.25 0 0 1-2.25 2.25H6.75a2.25 2.25 0 0 1-2.25-2.25V10.5a2.25 2.25 0 0 1 2.25-2.25ZM8.25 13.5h.008v.008H8.25V13.5Zm7.5 0h.008v.008h-.008V13.5ZM9 16.5h6"
+								/></svg
+							>
+						</div>
+						<div class="self-center truncate">Konfigurasi Agent</div>
+					</a>
+					{#if shiftKey}
+						<Tooltip
+							content={isPinned('agents')
+								? $i18n.t('Unpin from Sidebar')
+								: $i18n.t('Pin to Sidebar')}
+						>
+							<button
+								type="button"
+								class="p-1 mr-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+								on:click|preventDefault|stopPropagation={() => togglePin('agents')}
+							>
+								{#if isPinned('agents')}<PinSlash
+										className="size-3.5"
+										strokeWidth="1.5"
+									/>{:else}<Pin className="size-3.5" strokeWidth="1.5" />{/if}
 							</button>
 						</Tooltip>
 					{/if}
