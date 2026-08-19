@@ -1962,8 +1962,16 @@ async def chat_completion_files_handler(
     sources = []
 
     if files := body.get('metadata', {}).get('files', None):
-        # Check if all files are in full context mode
-        all_full_context = all(item.get('context') == 'full' for item in files)
+        # Agentic workflows are document-processing pipelines. Supplying only
+        # the top retrieval matches can omit key facts in a CV (such as the
+        # name, contact details, or opening profile) while retaining later
+        # employment chunks. Give the workflow the complete uploaded document
+        # so every node operates on one consistent source.
+        workflow_model = extra_params.get('__model__') or {}
+        force_full_context = bool(
+            workflow_model.get('owned_by') == 'openclaw' and workflow_model.get('agentic_workflow')
+        )
+        all_full_context = force_full_context or all(item.get('context') == 'full' for item in files)
 
         queries = []
         if not all_full_context:
@@ -2405,6 +2413,22 @@ async def process_chat_payload(request, form_data, user, metadata, model):
         form_data.get('messages', []),
         reasoning_format=get_reasoning_format(model),
     )
+
+    # An agentic workflow can define the task itself (for example, a document
+    # summarizer). In that case uploading a file is a complete user action; do
+    # not require the user to also enter a redundant chat message. Set the
+    # instruction before file retrieval so it is also used as the RAG query.
+    if (
+        model.get('owned_by') == 'openclaw'
+        and model.get('agentic_workflow')
+        and metadata.get('files')
+        and not get_last_user_message(form_data['messages'])
+    ):
+        form_data['messages'] = add_or_update_user_message(
+            'Process the uploaded document(s) according to this agentic workflow. '
+            'Use only the attached document(s) as source material and return the completed result directly.',
+            form_data['messages'],
+        )
 
     system_message = get_system_message(form_data.get('messages', []))
     if system_message:  # Chat Controls/User Settings

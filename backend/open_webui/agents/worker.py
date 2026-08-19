@@ -13,6 +13,7 @@ import asyncio
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -61,6 +62,25 @@ print(json.dumps(result))
 _WHISPER_LOCK = asyncio.Lock()
 _PYANNOTE_LOCK = asyncio.Lock()
 _PYANNOTE_PIPELINES: dict[str, object] = {}
+
+
+def _sanitize_document_summary_output(text: str, openclaw_agent_id: str) -> str:
+    """Remove accidental model planning text from the document-summary response."""
+    if openclaw_agent_id != 'pegawai-ringkasan-dokumen':
+        return text
+
+    # Some providers emit their planning before a channel delimiter. Only the
+    # content after the final delimiter is the user-facing response.
+    if '<channel|>' in text:
+        text = text.rsplit('<channel|>', 1)[-1]
+
+    # The document agent's contract requires a summary heading. Discard any
+    # preamble that precedes the first valid document-summary heading.
+    heading = re.search(
+        r'(?im)^\s*(?:(?:#{1,2}\s+)?(?:Ringkasan Dokumen|Ringkasan Laporan|Ringkasan)\b)',
+        text,
+    )
+    return text[heading.start() :].strip() if heading else text.strip()
 
 
 async def _await_with_heartbeat(awaitable, details: dict):
@@ -423,6 +443,7 @@ async def execute_agentic_chain_node(input_data: dict):
         timeout=int(input_data.get('timeout_seconds', 900)),
         session_key=f'{input_data["session_key"]}-node-{input_data["node_index"] + 1}',
     )
+    text = _sanitize_document_summary_output(openclaw_text(result), agent.config.openclaw.agent_id)
     return {
         'agent_id': agent.id,
         'agent_name': agent.name,
@@ -434,7 +455,7 @@ async def execute_agentic_chain_node(input_data: dict):
             if input_data['node_index'] == 0
             else 'Memproses output daripada agent sebelumnya'
         ),
-        'text': openclaw_text(result),
+        'text': text,
     }
 
 

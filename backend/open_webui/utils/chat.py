@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import sys
 import time
 import uuid
@@ -80,6 +81,19 @@ def _retrieval_context(metadata: dict) -> str:
             }
         )
     return json.dumps(records, ensure_ascii=False) if records else ''
+
+
+def _sanitize_document_summary_response(text: str, outputs: list[dict]) -> str:
+    """Keep provider planning text out of the document-summary chat response."""
+    if not outputs or outputs[-1].get('openclaw_agent_id') != 'pegawai-ringkasan-dokumen':
+        return text
+    if '<channel|>' in text:
+        text = text.rsplit('<channel|>', 1)[-1]
+    heading = re.search(
+        r'(?im)^\s*(?:(?:#{1,2}\s+)?(?:Ringkasan Dokumen|Ringkasan Laporan|Ringkasan)\b)',
+        text,
+    )
+    return text[heading.start() :].strip() if heading else text.strip()
 
 
 async def generate_openclaw_agent_chat_completion(request: Request, form_data: dict, user: Any, model: dict):
@@ -170,6 +184,14 @@ async def generate_agentic_workflow_chat_completion(request: Request, form_data:
             ),
             '',
         )
+    # The chat middleware normally creates this instruction before extracting
+    # file context. Keep a defensive fallback for API clients that submit an
+    # agentic workflow with files but an intentionally blank text message.
+    if not message and metadata.get('files'):
+        message = (
+            'Process the uploaded document(s) according to this agentic workflow. '
+            'Use only the attached document(s) as source material and return the completed result directly.'
+        )
     if not message:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Agentic workflow requires a user message')
 
@@ -234,6 +256,7 @@ async def generate_agentic_workflow_chat_completion(request: Request, form_data:
         chat_id=metadata.get('chat_id'),
         progress_callback=emit_progress,
     )
+    content = _sanitize_document_summary_response(result['text'], result.get('outputs') or [])
     return {
         'id': f'chatcmpl-{uuid.uuid4().hex}',
         'object': 'chat.completion',
@@ -242,7 +265,7 @@ async def generate_agentic_workflow_chat_completion(request: Request, form_data:
         'choices': [
             {
                 'index': 0,
-                'message': {'role': 'assistant', 'content': result['text']},
+                'message': {'role': 'assistant', 'content': content},
                 'finish_reason': 'stop',
             }
         ],
